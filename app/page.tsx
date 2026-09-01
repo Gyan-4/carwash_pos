@@ -1,15 +1,7 @@
 'use client';
 
-import { useAuth } from '@/context/AuthContext';
-import LoginScreen from '@/components/LoginScreen';
-import Dashboard from '@/components/Dashboard';
+import POSInterface from '@/components/POSInterface';
 
 export default function Home() {
-  const { user } = useAuth();
-
-  if (!user) {
-    return <LoginScreen />;
-  }
-
-  return <Dashboard />;
+  return <POSInterface />;
 }
