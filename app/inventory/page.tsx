@@ -1,28 +1,34 @@
 'use client';
 
-import { Package, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Package, Plus, RefreshCw, Pencil, Power } from 'lucide-react';
+
+type Usage = { serviceId: string; serviceName: string; quantity: number };
+type Item = { _id: string; name: string; unit: string; quantity: number; lowStockThreshold: number; costPerUnit: number; active: boolean; usage: Usage[] };
 
 export default function InventoryPage() {
-  return (
-    <div className="h-full w-full p-6 overflow-y-auto bg-slate-50/60 font-sans select-none">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-lg font-black text-slate-900">Inventory</h1>
-            <p className="mt-0.5 text-xs text-slate-500">Manage chemicals, supplies, and stock levels.</p>
-          </div>
-          <button className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700">
-            <Plus className="h-4 w-4" /> Add Item
-          </button>
-        </div>
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ name: '', unit: 'pcs', quantity: '', lowStockThreshold: '', costPerUnit: '' });
+  const [editing, setEditing] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
 
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
-          <Package className="mx-auto h-9 w-9 text-slate-300" />
-          <h2 className="mt-3 text-sm font-black text-slate-800">No inventory items</h2>
-          <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-slate-500">Add your real chemicals and supplies here. Stock quantities will be shown once inventory records are connected to the database.</p>
-          <button className="mt-5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-extrabold text-white hover:bg-blue-700">Add First Item</button>
-        </div>
-      </div>
-    </div>
-  );
+  const load = async (silent = false) => { if (!silent) setLoading(true); try { const r = await fetch('/api/inventory', { cache: 'no-store' }); const d = await r.json(); if (d.success) setItems(d.items || []); else setMessage(d.error || 'Unable to load inventory.'); } finally { if (!silent) setLoading(false); } };
+  useEffect(() => { load(); const id = setInterval(() => load(true), 5000); const focus = () => load(true); window.addEventListener('focus', focus); return () => { clearInterval(id); window.removeEventListener('focus', focus); }; }, []);
+
+  const reset = () => { setEditing(null); setForm({ name: '', unit: 'pcs', quantity: '', lowStockThreshold: '', costPerUnit: '' }); };
+  const save = async () => {
+    if (!form.name.trim() || !form.unit.trim()) return setMessage('Name and unit are required.');
+    const payload = { ...form, name: form.name.trim(), unit: form.unit.trim(), quantity: Number(form.quantity || 0), lowStockThreshold: Number(form.lowStockThreshold || 0), costPerUnit: Number(form.costPerUnit || 0) };
+    const r = await fetch('/api/inventory', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editing ? { id: editing, ...payload } : payload) });
+    const d = await r.json(); if (!d.success) return setMessage(d.error || 'Unable to save.'); setMessage('Saved.'); reset(); load(true);
+  };
+  const edit = (i: Item) => { setEditing(i._id); setForm({ name: i.name, unit: i.unit, quantity: String(i.quantity), lowStockThreshold: String(i.lowStockThreshold), costPerUnit: String(i.costPerUnit) }); setMessage(''); };
+  const deactivate = async (id: string) => { if (!confirm('Deactivate this inventory item?')) return; const r = await fetch(`/api/inventory?id=${id}`, { method: 'DELETE' }); const d = await r.json(); if (!d.success) setMessage(d.error || 'Unable to deactivate.'); else load(true); };
+
+  return <div className="h-full w-full overflow-y-auto bg-slate-50/60 p-6 font-sans select-none"><div className="mx-auto max-w-7xl space-y-5">
+    <div className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"><div><h1 className="text-lg font-black text-slate-900">Inventory</h1><p className="mt-0.5 text-xs text-slate-500">Manager-configurable chemicals, supplies, and stock levels.</p></div><button onClick={() => load()} className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-extrabold text-slate-700"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh</button></div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-black text-slate-900">{editing ? 'Edit Item' : 'Add Inventory Item'}</h2>{editing && <button onClick={reset} className="text-xs font-bold text-slate-500">Cancel</button>}</div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Item name" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-bold"/><input value={form.unit} onChange={e=>setForm({...form,unit:e.target.value})} placeholder="Unit (L, mL, pcs...)" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-bold"/><input type="number" min="0" value={form.quantity} onChange={e=>setForm({...form,quantity:e.target.value})} placeholder="Stock" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-bold"/><input type="number" min="0" value={form.lowStockThreshold} onChange={e=>setForm({...form,lowStockThreshold:e.target.value})} placeholder="Low stock" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-bold"/><input type="number" min="0" value={form.costPerUnit} onChange={e=>setForm({...form,costPerUnit:e.target.value})} placeholder="Cost / unit" className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-bold"/></div><button onClick={save} className="mt-3 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-extrabold text-white hover:bg-blue-700">{editing ? 'Save Changes' : 'Add Item'}</button>{message && <p className="mt-2 text-xs font-bold text-slate-500">{message}</p>}</div>
+    {items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm"><Package className="mx-auto h-9 w-9 text-slate-300"/><h2 className="mt-3 text-sm font-black text-slate-800">{loading ? 'Loading inventory...' : 'No inventory items'}</h2><p className="mt-1 text-xs text-slate-500">Add your real chemicals and supplies above.</p></div> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{items.map(i=><div key={i._id} className={`rounded-2xl border bg-white p-5 shadow-sm ${i.active ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}><div className="flex items-start justify-between"><div><h3 className="text-sm font-black text-slate-900">{i.name}</h3><p className="mt-1 text-[10px] font-bold text-slate-400">{i.active ? 'Active' : 'Inactive'} · {i.unit}</p></div><Package className="h-5 w-5 text-slate-300"/></div><div className="mt-5 flex items-end justify-between"><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Stock</p><p className={`text-2xl font-black ${i.active && i.quantity <= i.lowStockThreshold ? 'text-red-600' : 'text-slate-900'}`}>{i.quantity} <span className="text-xs font-bold">{i.unit}</span></p></div><p className="text-[10px] font-bold text-slate-400">Low: {i.lowStockThreshold} {i.unit}</p></div><div className="mt-4 flex gap-2"><button onClick={()=>edit(i)} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2 text-xs font-extrabold text-slate-700"><Pencil className="h-3.5 w-3.5"/> Edit</button>{i.active && <button onClick={()=>deactivate(i._id)} className="rounded-xl border border-red-100 px-3 py-2 text-xs font-extrabold text-red-600"><Power className="h-3.5 w-3.5"/></button>}</div></div>)}</div>}
+  </div></div>;
 }
