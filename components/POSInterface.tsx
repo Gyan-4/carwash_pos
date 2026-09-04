@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Car, Check, CircleDollarSign, RotateCcw, Search, X } from 'lucide-react';
-import { conflictsWithSelection, findPackageUpgrade, getPrice, hasPrice, SERVICE_CATALOG, VEHICLE_SIZES, type CatalogItem, type VehicleSize, type VehicleType } from '@/lib/serviceCatalog';
+import { conflictsWithSelection, findPackageUpgrade, getPrice, hasPrice, packageContainsSelection, SERVICE_CATALOG, VEHICLE_SIZES, type CatalogItem, type VehicleSize, type VehicleType } from '@/lib/serviceCatalog';
 
 export default function POSInterface() {
   const [vehicleType, setVehicleType] = useState<VehicleType>('sedan');
@@ -55,15 +55,29 @@ export default function POSInterface() {
       return;
     }
 
-    const isPackage = service.category === 'Car Wash Packages' || service.category === 'Premium Wash';
-    const componentSelections = selectedServices.filter((item) => item.components?.length && !item.category.includes('Detailing'));
-    const upgradeSource = isPackage ? componentSelections : [...componentSelections, service];
-    const upgrade = findPackageUpgrade(upgradeSource, vehicleType, vehicleSize);
+    const isPackage = service.category === 'Car Wash Packages' || service.category === 'Premium Wash' || service.category === 'Motorcycle';
+    const selectedPackages = selectedServices.filter((item) => item.category === 'Car Wash Packages' || item.category === 'Premium Wash' || item.category === 'Motorcycle');
 
-    // Convert component selections into a package only when the selected
-    // components exactly match that package. Never add extra services that
-    // the cashier did not select (e.g. Engine Wash).
-    if (upgrade && (upgrade.id === service.id || !isPackage)) {
+    // A package card is always available. Selecting a package explicitly means
+    // the cashier wants that package, so replace another package selection rather
+    // than stacking multiple package charges.
+    if (isPackage) {
+      const withoutPackages = selectedServices.filter((item) => !selectedPackages.some((pkg) => pkg.id === item.id));
+      const packageComponents = new Set(service.components ?? []);
+      const keptExtras = withoutPackages.filter((item) => {
+        if (!item.components?.length) return true;
+        return !item.components.some((component) => packageComponents.has(component));
+      });
+      setSelectedServices([...keptExtras, service]);
+      setMessage(`Package selected: ${service.name}.`);
+      return;
+    }
+
+    // If the exact package is fulfilled by the selected components, replace the
+    // component selections with that package. Packages with extra components do
+    // not qualify and remain available to click.
+    const upgrade = findPackageUpgrade([...selectedServices, service], vehicleType, vehicleSize);
+    if (upgrade) {
       const upgradeComponents = new Set(upgrade.components ?? []);
       const replaced = selectedServices.filter((item) => {
         if (!item.components?.length) return true;
@@ -74,11 +88,13 @@ export default function POSInterface() {
       return;
     }
 
-    // If a manually selected package already contains a component, don't add
-    // that component as a second charge.
-    const directConflict = conflictsWithSelection(service, selectedServices);
-    if (directConflict) {
-      setMessage(`Already included in: ${directConflict.name}.`);
+    // Individual services already included in a selected package should not be
+    // charged twice. This does not disable package cards that share components.
+    const selectedPackage = selectedServices.find((item) =>
+      (item.category === 'Car Wash Packages' || item.category === 'Premium Wash' || item.category === 'Motorcycle') && packageContainsSelection(item, [service]),
+    );
+    if (selectedPackage) {
+      setMessage(`${service.name} is already included in ${selectedPackage.name}.`);
       return;
     }
 
@@ -127,8 +143,8 @@ export default function POSInterface() {
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-4">
             <div>
-              <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-950">POS Terminal</h1>
-              <p className="mt-1 text-xs font-medium text-slate-600">Select the vehicle class, size, and service package.</p>
+              <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900">POS Terminal</h1>
+              <p className="mt-0.5 text-xs text-slate-500">Select the vehicle class, size, and service package.</p>
             </div>
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50">
               <Car className="w-5 h-5 text-blue-700" />
@@ -136,10 +152,10 @@ export default function POSInterface() {
           </div>
 
           <div>
-            <div className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-700">Vehicle type</div>
+            <div className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-800">Vehicle type</div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {(['motorcycle', 'sedan', 'suv', 'truck'] as VehicleType[]).map((type) => (
-                <button key={type} onClick={() => changeVehicleType(type)} className={`rounded-lg border px-3 py-2.5 text-xs font-extrabold capitalize transition ${vehicleType === type ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'}`}>
+                <button key={type} onClick={() => changeVehicleType(type)} className={`rounded-lg border px-3 py-2.5 text-xs font-bold capitalize transition ${vehicleType === type ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'}`}>
                   {type}
                 </button>
               ))}
@@ -148,10 +164,10 @@ export default function POSInterface() {
 
           {vehicleType !== 'motorcycle' && (
             <div className="mt-4">
-              <div className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-700">Vehicle size</div>
+              <div className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-800">Vehicle size</div>
               <div className="grid grid-cols-5 gap-2">
                 {VEHICLE_SIZES.map((size) => (
-                  <button key={size.id} onClick={() => changeVehicleSize(size.id)} className={`rounded-lg border px-2 py-2.5 text-xs font-extrabold transition ${vehicleSize === size.id ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'}`}>
+                  <button key={size.id} onClick={() => changeVehicleSize(size.id)} className={`rounded-lg border px-2 py-2.5 text-xs font-bold transition ${vehicleSize === size.id ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'}`}>
                     {size.label}
                   </button>
                 ))}
@@ -160,8 +176,8 @@ export default function POSInterface() {
           )}
 
           <div className="mt-4">
-            <div className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-700">Vehicle plate</div>
-            <input value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} placeholder="Enter vehicle plate number" className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-3 text-xs font-mono font-black uppercase text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            <div className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-800">Vehicle plate</div>
+            <input value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} placeholder="Enter vehicle plate number" className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-3 text-xs font-medium uppercase text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
           </div>
         </div>
 
