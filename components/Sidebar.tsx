@@ -11,6 +11,7 @@ import {
   LogOut,
   Package,
   BarChart3,
+  Tag,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -34,6 +35,7 @@ export default function Sidebar() {
     { name: 'Inventory', href: '/inventory', icon: Package },
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
     { name: 'Transactions', href: '/history', icon: Clock },
+    { name: 'Promos & Discounts', href: '/promos', icon: Tag },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
