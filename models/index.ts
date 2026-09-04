@@ -37,3 +37,5 @@ const ClientSchema = new Schema({
 export const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', TransactionSchema);
 export const Queue = mongoose.models.Queue || mongoose.model('Queue', QueueSchema);
 export const Client = mongoose.models.Client || mongoose.model('Client', ClientSchema);
+
+export { User, Session } from './Auth';
