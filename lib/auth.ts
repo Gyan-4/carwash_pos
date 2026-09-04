@@ -46,9 +46,10 @@ export async function createSession(userId: string) {
 }
 
 export async function getAuthenticatedUser() {
-  await connectToDatabase();
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
+
+  await connectToDatabase();
 
   const session = await Session.findOne({
     tokenHash: hashToken(token),
