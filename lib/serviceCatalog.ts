@@ -106,9 +106,10 @@ export function hasPrice(item: CatalogItem, vehicleType: VehicleType, vehicleSiz
   return item.prices?.[vehicleSize] !== undefined || item.prices?.small !== undefined;
 }
 
-function includesAllComponents(packageItem: CatalogItem, components: ServiceComponent[]): boolean {
-  if (!packageItem.components?.length || components.length === 0) return false;
-  return components.every((component) => packageItem.components!.includes(component));
+function sameComponents(a: ServiceComponent[] = [], b: ServiceComponent[] = []): boolean {
+  const left = Array.from(new Set(a)).sort();
+  const right = Array.from(new Set(b)).sort();
+  return left.length === right.length && left.every((component, index) => component === right[index]);
 }
 
 export function findPackageUpgrade(selected: CatalogItem[], vehicleType: VehicleType, vehicleSize: VehicleSize): CatalogItem | undefined {
@@ -119,13 +120,12 @@ export function findPackageUpgrade(selected: CatalogItem[], vehicleType: Vehicle
     ? MOTORCYCLE_SERVICES
     : [...CAR_WASH_PACKAGES, ...PREMIUM_PACKAGES];
 
+  // Only upgrade when the cashier selected the exact components of a package.
+  // A package containing extra services (for example Engine Wash) must not be
+  // selected unless Engine Wash was also selected.
   return packages
-    .filter((item) => includesAllComponents(item, components) && hasPrice(item, vehicleType, vehicleSize))
-    .sort((a, b) => {
-      const componentDiff = (a.components?.length ?? 99) - (b.components?.length ?? 99);
-      if (componentDiff !== 0) return componentDiff;
-      return getPrice(a, vehicleType, vehicleSize) - getPrice(b, vehicleType, vehicleSize);
-    })[0];
+    .filter((item) => sameComponents(item.components, components) && hasPrice(item, vehicleType, vehicleSize))
+    .sort((a, b) => getPrice(a, vehicleType, vehicleSize) - getPrice(b, vehicleType, vehicleSize))[0];
 }
 
 export function conflictsWithSelection(item: CatalogItem, selected: CatalogItem[]): CatalogItem | undefined {
