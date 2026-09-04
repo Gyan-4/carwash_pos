@@ -11,6 +11,8 @@ const TransactionSchema = new Schema({
   discountAmount: { type: Number, default: 0 },
   grandTotal: { type: Number, required: true },
   paymentMethod: { type: String, enum: ['cash', 'gcash', 'maya', 'card'], required: true },
+  cashierId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  cashierName: { type: String, required: true },
   createdAt: { type: Date, default: Date.now }
 });
 
