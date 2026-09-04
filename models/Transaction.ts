@@ -5,6 +5,7 @@ const TransactionSchema = new Schema({
   customerName: { type: String, default: '' },
   plate: { type: String, required: true, trim: true },
   vehicleType: { type: String, enum: ['motorcycle', 'sedan', 'suv', 'truck'], required: true },
+  vehicleSize: { type: String, enum: ['small', 'medium', 'large', 'xl', 'xxl'] },
   services: [{
     id: { type: String, required: true },
     name: { type: String, required: true },
