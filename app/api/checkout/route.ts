@@ -1,11 +1,28 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import { Transaction, Queue, Client } from '@/models';
+import { getAuthenticatedUser } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
+    }
+
     await connectToDatabase();
     const body = await req.json();
+
+    if (
+      typeof body.plate !== 'string' ||
+      typeof body.vehicleType !== 'string' ||
+      typeof body.serviceName !== 'string' ||
+      typeof body.subtotal !== 'number' ||
+      typeof body.grandTotal !== 'number' ||
+      !['cash', 'gcash', 'maya', 'card'].includes(body.paymentMethod)
+    ) {
+      return NextResponse.json({ success: false, error: 'Invalid checkout data.' }, { status: 400 });
+    }
 
     const ticketNo = `#${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -15,11 +32,13 @@ export async function POST(req: Request) {
       clientName: body.clientName,
       vehicleType: body.vehicleType,
       serviceName: body.serviceName,
-      addons: body.addons || [],
+      addons: Array.isArray(body.addons) ? body.addons : [],
       subtotal: body.subtotal,
-      discountAmount: body.discountAmount || 0,
+      discountAmount: typeof body.discountAmount === 'number' ? body.discountAmount : 0,
       grandTotal: body.grandTotal,
-      paymentMethod: body.paymentMethod
+      paymentMethod: body.paymentMethod,
+      cashierId: user.id,
+      cashierName: user.name,
     });
 
     await Queue.create({
@@ -42,21 +61,19 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, ticketNo, transaction });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error('Checkout error:', error);
+    return NextResponse.json({ success: false, error: 'Unable to complete checkout.' }, { status: 500 });
   }
 }
 
 export async function GET() {
-  try {
-    await connectToDatabase();
-    return NextResponse.json({ 
-      success: true, 
-      message: 'MongoDB Atlas is connected and ready!' 
-    });
-  } catch (error: any) {
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message 
-    }, { status: 500 });
+  const user = await getAuthenticatedUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
   }
+
+  return NextResponse.json({
+    success: true,
+    message: 'MongoDB Atlas is connected and ready!',
+  });
 }
