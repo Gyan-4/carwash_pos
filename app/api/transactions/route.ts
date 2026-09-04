@@ -30,6 +30,7 @@ export async function POST(req: Request) {
       customerName: body.customerName || '',
       plate: String(body.plate).trim().toUpperCase(),
       vehicleType: body.vehicleType,
+      vehicleSize: body.vehicleSize || undefined,
       services: body.services,
       subtotal: Number(body.subtotal),
       discount: Number(body.discount || 0),
