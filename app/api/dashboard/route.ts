@@ -36,7 +36,8 @@ export async function GET() {
         { $match: { status: 'completed' } },
         { $unwind: '$services' },
         { $group: { _id: '$services.name', count: { $sum: 1 }, sales: { $sum: '$services.price' } } },
-        { $sort: { count: -1 } },
+        // Deterministic tie-breaker: equal counts are ordered by service name.
+        { $sort: { count: -1, _id: 1 } },
         { $limit: 8 },
       ]),
     ]);
