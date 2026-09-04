@@ -112,11 +112,14 @@ function includesAllComponents(packageItem: CatalogItem, components: ServiceComp
 }
 
 export function findPackageUpgrade(selected: CatalogItem[], vehicleType: VehicleType, vehicleSize: VehicleSize): CatalogItem | undefined {
-  if (vehicleType === 'motorcycle') return undefined;
   const components = Array.from(new Set(selected.flatMap((item) => item.components ?? [])));
   if (components.length < 2) return undefined;
 
-  return [...CAR_WASH_PACKAGES, ...PREMIUM_PACKAGES]
+  const packages = vehicleType === 'motorcycle'
+    ? MOTORCYCLE_SERVICES
+    : [...CAR_WASH_PACKAGES, ...PREMIUM_PACKAGES];
+
+  return packages
     .filter((item) => includesAllComponents(item, components) && hasPrice(item, vehicleType, vehicleSize))
     .sort((a, b) => {
       const componentDiff = (a.components?.length ?? 99) - (b.components?.length ?? 99);
