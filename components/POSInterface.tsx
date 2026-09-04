@@ -60,8 +60,9 @@ export default function POSInterface() {
     const upgradeSource = isPackage ? componentSelections : [...componentSelections, service];
     const upgrade = findPackageUpgrade(upgradeSource, vehicleType, vehicleSize);
 
-    // If the cashier has selected individual services that make up a package,
-    // replace those items with the package instead of charging the components separately.
+    // Convert component selections into a package only when the selected
+    // components exactly match that package. Never add extra services that
+    // the cashier did not select (e.g. Engine Wash).
     if (upgrade && (upgrade.id === service.id || !isPackage)) {
       const upgradeComponents = new Set(upgrade.components ?? []);
       const replaced = selectedServices.filter((item) => {
@@ -73,6 +74,8 @@ export default function POSInterface() {
       return;
     }
 
+    // If a manually selected package already contains a component, don't add
+    // that component as a second charge.
     const directConflict = conflictsWithSelection(service, selectedServices);
     if (directConflict) {
       setMessage(`Already included in: ${directConflict.name}.`);
@@ -133,10 +136,10 @@ export default function POSInterface() {
           </div>
 
           <div>
-            <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-700">Vehicle type</div>
+            <div className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-700">Vehicle type</div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {(['motorcycle', 'sedan', 'suv', 'truck'] as VehicleType[]).map((type) => (
-                <button key={type} onClick={() => changeVehicleType(type)} className={`rounded-lg border px-3 py-2.5 text-xs font-medium capitalize transition ${vehicleType === type ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'}`}>
+                <button key={type} onClick={() => changeVehicleType(type)} className={`rounded-lg border px-3 py-2.5 text-xs font-extrabold capitalize transition ${vehicleType === type ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'}`}>
                   {type}
                 </button>
               ))}
@@ -145,10 +148,10 @@ export default function POSInterface() {
 
           {vehicleType !== 'motorcycle' && (
             <div className="mt-4">
-              <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-700">Vehicle size</div>
+              <div className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-700">Vehicle size</div>
               <div className="grid grid-cols-5 gap-2">
                 {VEHICLE_SIZES.map((size) => (
-                  <button key={size.id} onClick={() => changeVehicleSize(size.id)} className={`rounded-lg border px-2 py-2.5 text-xs font-medium transition ${vehicleSize === size.id ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'}`}>
+                  <button key={size.id} onClick={() => changeVehicleSize(size.id)} className={`rounded-lg border px-2 py-2.5 text-xs font-extrabold transition ${vehicleSize === size.id ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm' : 'border-slate-300 bg-white text-slate-700 hover:border-blue-300 hover:bg-slate-50'}`}>
                     {size.label}
                   </button>
                 ))}
@@ -157,8 +160,8 @@ export default function POSInterface() {
           )}
 
           <div className="mt-4">
-            <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-slate-700">Vehicle plate</div>
-            <input value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} placeholder="Enter vehicle plate number" className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-3 text-xs font-mono font-bold uppercase text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+            <div className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-700">Vehicle plate</div>
+            <input value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} placeholder="Enter vehicle plate number" className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-3 text-xs font-mono font-black uppercase text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
           </div>
         </div>
 
