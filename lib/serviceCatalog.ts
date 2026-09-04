@@ -106,9 +106,29 @@ export function hasPrice(item: CatalogItem, vehicleType: VehicleType, vehicleSiz
   return item.prices?.[vehicleSize] !== undefined || item.prices?.small !== undefined;
 }
 
+function includesAllComponents(packageItem: CatalogItem, components: ServiceComponent[]): boolean {
+  if (!packageItem.components?.length || components.length === 0) return false;
+  return components.every((component) => packageItem.components!.includes(component));
+}
+
+export function findPackageUpgrade(selected: CatalogItem[], vehicleType: VehicleType, vehicleSize: VehicleSize): CatalogItem | undefined {
+  if (vehicleType === 'motorcycle') return undefined;
+  const components = Array.from(new Set(selected.flatMap((item) => item.components ?? [])));
+  if (components.length < 2) return undefined;
+
+  return [...CAR_WASH_PACKAGES, ...PREMIUM_PACKAGES]
+    .filter((item) => includesAllComponents(item, components) && hasPrice(item, vehicleType, vehicleSize))
+    .sort((a, b) => {
+      const componentDiff = (a.components?.length ?? 99) - (b.components?.length ?? 99);
+      if (componentDiff !== 0) return componentDiff;
+      return getPrice(a, vehicleType, vehicleSize) - getPrice(b, vehicleType, vehicleSize);
+    })[0];
+}
+
 export function conflictsWithSelection(item: CatalogItem, selected: CatalogItem[]): CatalogItem | undefined {
   if (!item.components?.length) return undefined;
-  return selected.find((selectedItem) =>
-    selectedItem.components?.some((component) => item.components?.includes(component)),
-  );
+  return selected.find((selectedItem) => {
+    if (selectedItem.id === item.id) return false;
+    return selectedItem.components?.some((component) => item.components?.includes(component));
+  });
 }
