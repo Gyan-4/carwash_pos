@@ -1,47 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { BarChart3, Car, Wallet, TrendingUp, ShoppingCart } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BarChart3, Car, Wallet, TrendingUp, ShoppingCart, RefreshCw } from 'lucide-react';
+
+type Data = { overview: { sales:number; vehicles:number; customers:number }; weeklySales:{date:string;sales:number;vehicles:number}[]; serviceMix:{name:string;count:number;sales:number}[] };
 
 export default function AnalyticsPage() {
-  return (
-    <div className="h-full w-full overflow-y-auto bg-slate-50">
-      <div className="mx-auto max-w-7xl space-y-6 p-5 md:p-7">
-        <header>
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">Analytics</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900">Sales & Performance</h1>
-          <p className="mt-1 text-sm text-slate-500">Real metrics will appear here when transaction records are available.</p>
-        </header>
-
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {[
-            { label: 'Sales', icon: Wallet },
-            { label: 'Vehicles Serviced', icon: Car },
-            { label: 'Average Transaction', icon: TrendingUp },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500">{item.label}</span>
-                  <Icon className="h-4 w-4 text-slate-400" />
-                </div>
-                <p className="mt-3 text-2xl font-black tracking-tight text-slate-900">—</p>
-                <p className="mt-1 text-[10px] font-bold text-slate-400">No data yet</p>
-              </div>
-            );
-          })}
-        </section>
-
-        <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
-          <BarChart3 className="mx-auto h-9 w-9 text-slate-300" />
-          <h2 className="mt-3 text-sm font-black text-slate-800">Analytics will appear here</h2>
-          <p className="mx-auto mt-1 max-w-lg text-xs leading-5 text-slate-500">There are no transaction records yet. Once completed POS sales are stored in MongoDB, this page can calculate daily sales, service mix, customer activity, and performance trends.</p>
-          <Link href="/" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-extrabold text-white hover:bg-blue-700">
-            <ShoppingCart className="h-4 w-4" /> Open POS
-          </Link>
-        </section>
-      </div>
+  const [data,setData]=useState<Data|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState('');
+  async function load(){setLoading(true);setError('');try{const r=await fetch('/api/dashboard',{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load analytics.');setData(d);}catch(e){setError(e instanceof Error?e.message:'Unable to load analytics.');}finally{setLoading(false);}}
+  useEffect(()=>{load();},[]);
+  const weekSales=data?.weeklySales.reduce((s,x)=>s+x.sales,0)||0; const weekVehicles=data?.weeklySales.reduce((s,x)=>s+x.vehicles,0)||0; const avg=weekVehicles?weekSales/weekVehicles:0;
+  return <div className="h-full w-full overflow-y-auto bg-slate-50"><div className="mx-auto max-w-7xl space-y-6 p-5 md:p-7">
+    <header className="flex items-center justify-between gap-3"><div><p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">Analytics</p><h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900">Sales & Performance</h1><p className="mt-1 text-sm text-slate-500">Calculated from completed transactions in MongoDB.</p></div><button onClick={load} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-extrabold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading?'animate-spin':''}`}/>Refresh</button></header>
+    {error&&<div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">{error}</div>}
+    <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">{[
+      {label:'Sales (7 days)',value:`₱${weekSales.toLocaleString('en-PH',{minimumFractionDigits:2})}`,icon:Wallet},
+      {label:'Vehicles Serviced',value:String(weekVehicles),icon:Car},
+      {label:'Average Transaction',value:`₱${avg.toLocaleString('en-PH',{minimumFractionDigits:2})}`,icon:TrendingUp},
+    ].map(x=>{const Icon=x.icon;return <div key={x.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">{x.label}</span><Icon className="h-4 w-4 text-slate-400"/></div><p className="mt-3 text-2xl font-black tracking-tight text-slate-900">{loading&&!data?'—':x.value}</p><p className="mt-1 text-[10px] font-bold text-slate-400">Last 7 days</p></div>})}</section>
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"><div className="border-b border-slate-100 p-4"><h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Daily Sales</h2></div>{data?.weeklySales.length?<div className="divide-y divide-slate-100">{data.weeklySales.map(x=><div key={x.date} className="flex items-center justify-between p-4"><div><p className="text-xs font-bold text-slate-800">{new Date(`${x.date}T00:00:00`).toLocaleDateString()}</p><p className="mt-1 text-[10px] text-slate-400">{x.vehicles} vehicle{x.vehicles===1?'':'s'}</p></div><p className="font-mono text-xs font-black text-slate-900">₱{x.sales.toLocaleString('en-PH',{minimumFractionDigits:2})}</p></div>)}</div>:<div className="p-10 text-center text-xs text-slate-400">No completed sales yet.</div>}</section>
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"><div className="border-b border-slate-100 p-4"><h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">Service Performance</h2></div>{data?.serviceMix.length?<div className="divide-y divide-slate-100">{data.serviceMix.map(x=><div key={x.name} className="flex items-center justify-between gap-3 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-slate-800">{x.name}</p><p className="mt-1 text-[10px] text-slate-400">{x.count} sold</p></div><p className="font-mono text-xs font-black text-slate-900">₱{x.sales.toLocaleString('en-PH',{minimumFractionDigits:2})}</p></div>)}</div>:<div className="p-10 text-center text-xs text-slate-400">No service sales yet.</div>}</section>
     </div>
-  );
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-xs font-bold text-slate-600">Today's sales: <span className="font-black text-slate-900">₱{(data?.overview.sales||0).toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p><Link href="/" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-extrabold text-white hover:bg-blue-700"><ShoppingCart className="h-4 w-4"/>Open POS</Link></div>
+  </div></div>;
 }
