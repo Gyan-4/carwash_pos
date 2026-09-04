@@ -1,417 +1,202 @@
 'use client';
 
-import { useState } from 'react';
-import { 
-  Search, 
-  Car, 
-  Bike, 
-  Sparkles, 
-  Plus, 
-  Trash2, 
-  Award, 
-  ShieldCheck, 
-  AlertCircle,
-  ChevronDown
+import Link from 'next/link';
+import {
+  ArrowUpRight,
+  BarChart3,
+  Car,
+  ChevronRight,
+  Clock3,
+  Droplets,
+  Package,
+  ShoppingCart,
+  Users,
+  Wallet,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
-import PaymentModal from './PaymentModal';
 
-type VehicleType = 'sedan' | 'suv' | 'pickup' | 'van' | 'motorcycle';
-
-interface ServiceItem {
-  id: string;
-  name: string;
-  category: string;
-  prices: Record<VehicleType, number>;
-  description: string;
-}
-
-const SERVICES: ServiceItem[] = [
-  {
-    id: 'pkg-1',
-    name: 'Package 1: Express Wash',
-    category: 'Basic Care',
-    prices: { sedan: 150, suv: 180, pickup: 200, van: 220, motorcycle: 80 },
-    description: 'Exterior pressure wash, foam soap, micro-fiber dry, tire black.'
-  },
-  {
-    id: 'pkg-2',
-    name: 'Package 2: Wash & Interior Vacuum',
-    category: 'Standard Care',
-    prices: { sedan: 300, suv: 350, pickup: 380, van: 420, motorcycle: 120 },
-    description: 'Express wash + interior vacuuming, dashboard wipe down, and air freshener.'
-  },
-  {
-    id: 'pkg-3',
-    name: 'Package 3: Wash, Interior & Hand Wax',
-    category: 'Full Service',
-    prices: { sedan: 550, suv: 650, pickup: 700, van: 750, motorcycle: 250 },
-    description: 'Full interior vacuum, hand paste wax application, glass clarity polish.'
-  },
-  {
-    id: 'pkg-4',
-    name: 'Graphene Coating Campaign',
-    category: 'Premium Detailing',
-    prices: { sedan: 10000, suv: 11500, pickup: 12000, van: 12500, motorcycle: 4500 },
-    description: '3-year paint protection nano graphene layer with scratch resistance.'
-  }
+const stats = [
+  { label: "Today's Sales", value: '₱12,480', change: '+12.5%', icon: Wallet, href: '/history' },
+  { label: 'Vehicles Washed', value: '38', change: '+8 today', icon: Car, href: '/' },
+  { label: 'Active Queue', value: '7', change: '3 washing', icon: Clock3, href: '/queue' },
+  { label: 'Customers', value: '284', change: '+6 this week', icon: Users, href: '/clients' },
 ];
 
-const ADDONS = [
-  { id: 'add-1', name: 'Helmet Sanitizer & Deodorize', price: 100, target: 'motorcycle' },
-  { id: 'add-2', name: 'Engine Bay Wash & Degrease', price: 350, target: 'car' },
-  { id: 'add-3', name: 'Underchassis Pressure Scrub', price: 250, target: 'car' },
-  { id: 'add-4', name: 'Glass Water Spot Removal', price: 400, target: 'all' },
+const quickActions = [
+  { title: 'POS Terminal', description: 'Start a new carwash transaction', href: '/', icon: ShoppingCart },
+  { title: 'Customers', description: 'View clients, vehicles and loyalty', href: '/clients', icon: Users },
+  { title: 'Inventory', description: 'Check stock and restocking needs', href: '/inventory', icon: Package },
+  { title: 'Analytics', description: 'Review sales and service performance', href: '/analytics', icon: BarChart3 },
 ];
 
-export default function POSInterface() {
-  const [vehicleType, setVehicleType] = useState<VehicleType>('sedan');
-  const [plateInput, setPlateInput] = useState<string>('');
-  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
-  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
-  const [discountType, setDiscountType] = useState<'none' | 'rider' | 'loyalty'>('none');
-  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string>('');
+const recentTransactions = [
+  { id: '#TX-1048', customer: 'Juan Dela Cruz', service: 'Package 2', amount: '₱300', time: '2 min ago' },
+  { id: '#TX-1047', customer: 'Marco Santos', service: 'Package 1 + Sanitizer', amount: '₱180', time: '8 min ago' },
+  { id: '#TX-1046', customer: 'Ana Reyes', service: 'Package 3', amount: '₱550', time: '14 min ago' },
+  { id: '#TX-1045', customer: 'Walk-in', service: 'Express Wash', amount: '₱150', time: '21 min ago' },
+];
 
-  // Mock Database Match for Plate Search
-  const isMatch = plateInput.trim().toUpperCase() === 'FAB 7365' || plateInput.trim().toUpperCase() === 'FAB7365';
-  const customerProfile = isMatch ? {
-    name: 'Juan Dela Cruz',
-    model: 'Toyota Vios • White',
-    lastVisit: 'Aug 29, 2026',
-    totalVisits: 14,
-    stamps: 7,
-    maxStamps: 11
-  } : null;
+const inventoryAlerts = [
+  { name: 'Nano Graphene Coating Formula', stock: '2 bottles', severity: 'Critical' },
+  { name: 'Tire Shine & Degreaser Solution', stock: '3.2 L', severity: 'Low' },
+];
 
-  const toggleAddon = (id: string) => {
-    setSelectedAddons(prev => 
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-    );
-  };
-
-  // Base Calculation Logic
-  const servicePrice = selectedService ? selectedService.prices[vehicleType] : 0;
-  const addonsTotal = selectedAddons.reduce((sum, addonId) => {
-    const item = ADDONS.find(a => a.id === addonId);
-    return sum + (item ? item.price : 0);
-  }, 0);
-
-  const subtotal = servicePrice + addonsTotal;
-
-  let discountAmount = 0;
-  if (discountType === 'rider') {
-    discountAmount = subtotal * 0.20; // 20% Rider Discount
-  } else if (discountType === 'loyalty') {
-    discountAmount = Math.min(subtotal, 150); // Free Express Wash Credit
-  }
-
-  const grandTotal = Math.max(0, subtotal - discountAmount);
-
-  const handleOpenPayment = () => {
-    if (!plateInput.trim()) {
-      setErrorMessage('Vehicle Plate Number is required before starting transaction.');
-      return;
-    }
-    if (!selectedService) {
-      setErrorMessage('Please select a main carwash package.');
-      return;
-    }
-    setErrorMessage('');
-    setShowPaymentModal(true);
-  };
-
-  const handlePaymentSuccess = (paymentDetails: any) => {
-    setShowPaymentModal(false);
-    alert(`Order completed successfully via ${paymentDetails.method.toUpperCase()}! Queue ticket generated.`);
-    // Reset state after checkout
-    setSelectedService(null);
-    setSelectedAddons([]);
-    setPlateInput('');
-    setDiscountType('none');
-  };
-
+export default function Dashboard() {
   return (
-    <div className="flex h-full w-full bg-slate-100 overflow-hidden font-sans select-none">
-      {/* Left Main Interface: Service Selection & Lookup */}
-      <div className="flex-1 flex flex-col h-full p-5 space-y-4 overflow-y-auto">
-        {/* Top Control Bar: Search & Vehicle Type Selector */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Plate Search Input */}
-          <div className="md:col-span-2 relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-            <input
-              type="text"
-              placeholder="Enter Vehicle Plate Number (e.g., FAB 7365)..."
-              value={plateInput}
-              onChange={(e) => {
-                setPlateInput(e.target.value);
-                if (errorMessage) setErrorMessage('');
-              }}
-              className="w-full bg-white border border-slate-200 rounded-2xl py-3 pl-10 pr-4 text-xs font-bold font-mono text-slate-800 placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm uppercase"
-            />
+    <div className="h-full w-full overflow-y-auto bg-slate-50 font-sans">
+      <div className="mx-auto max-w-7xl p-5 md:p-7 space-y-6">
+        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-600">Manager Overview</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900">Good evening, Mr. DM</h1>
+            <p className="mt-1 text-sm text-slate-500">Here is what is happening at the carwash today.</p>
           </div>
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-extrabold text-white shadow-sm transition hover:bg-blue-700"
+          >
+            <ShoppingCart className="h-4 w-4" />
+            Open POS Terminal
+          </Link>
+        </header>
 
-          {/* Vehicle Type Dropdown */}
-          <div className="relative">
-            <select
-              value={vehicleType}
-              onChange={(e) => setVehicleType(e.target.value as VehicleType)}
-              className="w-full appearance-none bg-white border border-slate-200 rounded-2xl py-3 px-4 text-xs font-extrabold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer"
-            >
-              <option value="sedan">Vehicle: Sedan / Hatchback</option>
-              <option value="suv">Vehicle: SUV / Crossover</option>
-              <option value="pickup">Vehicle: Pickup Truck</option>
-              <option value="van">Vehicle: Passenger Van</option>
-              <option value="motorcycle">Vehicle: Motorcycle / Scooter</option>
-            </select>
-            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* Validation Warning Alert */}
-        {errorMessage && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {/* Live Customer & Vehicle Lookup Panel */}
-        {customerProfile ? (
-          <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 shadow-md">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-black bg-blue-600 px-2 py-0.5 rounded">
-                    {plateInput.toUpperCase()}
-                  </span>
-                  <span className="text-xs font-extrabold text-slate-100">{customerProfile.name}</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">{customerProfile.model}</p>
-              </div>
-              <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-emerald-500/20">
-                Registered Member
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-800 text-center">
-              <div className="bg-slate-800/60 p-2 rounded-xl">
-                <span className="text-[9px] font-bold text-slate-400 block uppercase">Last Service</span>
-                <span className="text-xs font-extrabold text-slate-200">{customerProfile.lastVisit}</span>
-              </div>
-              <div className="bg-slate-800/60 p-2 rounded-xl">
-                <span className="text-[9px] font-bold text-slate-400 block uppercase">Total Visits</span>
-                <span className="text-xs font-extrabold text-slate-200">{customerProfile.totalVisits} Times</span>
-              </div>
-              <div className="bg-slate-800/60 p-2 rounded-xl">
-                <span className="text-[9px] font-bold text-slate-400 block uppercase">Stamp Status</span>
-                <span className="text-xs font-extrabold text-amber-400">{customerProfile.stamps} / {customerProfile.maxStamps} Stamps</span>
-              </div>
-            </div>
-          </div>
-        ) : plateInput.trim().length >= 3 && (
-          <div className="bg-blue-50/80 border border-blue-200 p-3.5 rounded-2xl flex justify-between items-center text-xs">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-blue-600 text-white rounded-xl">
-                <Car className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-extrabold text-slate-800">New Plate Registration</span>
-                <p className="text-[11px] text-slate-500">{plateInput.toUpperCase()} will be assigned a new stamp card upon checkout.</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Main Service Packages */}
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
-              Carwash Packages ({vehicleType.toUpperCase()})
-            </h2>
-            <span className="text-[10px] text-slate-400 font-bold">Select 1 primary package</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {SERVICES.map((pkg) => {
-              const isSelected = selectedService?.id === pkg.id;
-              const price = pkg.prices[vehicleType];
-
-              return (
-                <div
-                  key={pkg.id}
-                  onClick={() => setSelectedService(pkg)}
-                  className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between space-y-3 ${
-                    isSelected
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20'
-                      : 'bg-white border-slate-200/80 text-slate-800 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                        isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {pkg.category}
-                      </span>
-                      <h3 className="text-xs font-extrabold mt-1.5">{pkg.name}</h3>
-                    </div>
-                    <span className={`text-base font-black font-mono ${isSelected ? 'text-white' : 'text-slate-900'}`}>
-                      ₱{price.toFixed(2)}
-                    </span>
-                  </div>
-                  <p className={`text-[11px] leading-relaxed ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
-                    {pkg.description}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Add-on Upgrades */}
-        <div className="space-y-2 pt-2">
-          <h2 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
-            Available Service Add-ons
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-            {ADDONS.map((addon) => {
-              const isChecked = selectedAddons.includes(addon.id);
-              return (
-                <button
-                  key={addon.id}
-                  type="button"
-                  onClick={() => toggleAddon(addon.id)}
-                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between space-y-2 ${
-                    isChecked
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="text-[11px] font-bold leading-tight">{addon.name}</span>
-                  <span className={`text-xs font-black font-mono ${isChecked ? 'text-emerald-400' : 'text-slate-900'}`}>
-                    +₱{addon.price.toFixed(2)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Right Order Summary Drawer */}
-      <div className="w-96 bg-white border-l border-slate-200/80 flex flex-col justify-between shrink-0 h-full">
-        {/* Terminal Order Header */}
-        <div className="p-4 border-b border-slate-100 space-y-1">
-          <div className="flex justify-between items-center">
-            <h2 className="text-sm font-black text-slate-800">Order Terminal</h2>
-            <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-              #TX-{Math.floor(1000 + Math.random() * 9000)}
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400">Review selected services and discounts</p>
-        </div>
-
-        {/* Selected Items List */}
-        <div className="flex-1 p-4 space-y-3 overflow-y-auto">
-          {selectedService ? (
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
-              <div>
-                <span className="font-extrabold text-slate-800 block">{selectedService.name}</span>
-                <span className="text-[10px] text-slate-400 capitalize">{vehicleType} Package</span>
-              </div>
-              <span className="font-mono font-bold text-slate-900">
-                ₱{selectedService.prices[vehicleType].toFixed(2)}
-              </span>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-slate-400 text-xs">
-              No main package selected yet.
-            </div>
-          )}
-
-          {selectedAddons.map((addonId) => {
-            const addon = ADDONS.find(a => a.id === addonId);
-            if (!addon) return null;
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {stats.map((stat) => {
+            const Icon = stat.icon;
             return (
-              <div key={addon.id} className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
-                <span className="font-bold text-slate-700 text-[11px]">{addon.name}</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-slate-900">₱{addon.price.toFixed(2)}</span>
-                  <button onClick={() => toggleAddon(addon.id)} className="text-slate-400 hover:text-rose-500">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+              <Link
+                key={stat.label}
+                href={stat.href}
+                className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <ArrowUpRight className="h-4 w-4 text-slate-300 transition group-hover:text-blue-500" />
                 </div>
-              </div>
+                <p className="mt-4 text-xs font-semibold text-slate-500">{stat.label}</p>
+                <div className="mt-1 flex items-end justify-between gap-2">
+                  <p className="text-xl font-black tracking-tight text-slate-900">{stat.value}</p>
+                  <span className="text-[10px] font-bold text-emerald-600">{stat.change}</span>
+                </div>
+              </Link>
             );
           })}
+        </section>
 
-          {/* Discounts & Promos Section */}
-          <div className="pt-3 border-t border-slate-100 space-y-2">
-            <span className="text-[10px] font-extrabold uppercase text-slate-400 block">Apply Promotions</span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setDiscountType(discountType === 'rider' ? 'none' : 'rider')}
-                className={`p-2 rounded-xl text-[10px] font-extrabold border transition flex items-center justify-center gap-1 ${
-                  discountType === 'rider'
-                    ? 'bg-amber-500 text-white border-amber-500'
-                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                <Bike className="w-3 h-3" /> Rider (-20%)
-              </button>
-              <button
-                type="button"
-                onClick={() => setDiscountType(discountType === 'loyalty' ? 'none' : 'loyalty')}
-                className={`p-2 rounded-xl text-[10px] font-extrabold border transition flex items-center justify-center gap-1 ${
-                  discountType === 'loyalty'
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                <Award className="w-3 h-3" /> Loyalty Reward
-              </button>
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-black text-slate-900">Quick Access</h2>
+              <p className="text-xs text-slate-500">Jump directly to the area you need.</p>
             </div>
           </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link
+                  key={action.title}
+                  href={action.href}
+                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-blue-300 hover:bg-blue-50/30"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-extrabold text-slate-900">{action.title}</p>
+                    <p className="mt-0.5 text-[10px] leading-4 text-slate-500">{action.description}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.55fr_1fr]">
+          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <h2 className="text-sm font-black text-slate-900">Recent Transactions</h2>
+                <p className="text-[11px] text-slate-500">Latest completed sales</p>
+              </div>
+              <Link href="/history" className="text-[11px] font-bold text-blue-600 hover:text-blue-700">View all</Link>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {recentTransactions.map((tx) => (
+                <div key={tx.id} className="flex items-center gap-3 px-5 py-3.5">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+                    <Droplets className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-xs font-extrabold text-slate-800">{tx.customer}</p>
+                      <span className="hidden rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-mono font-bold text-slate-500 sm:inline">{tx.id}</span>
+                    </div>
+                    <p className="mt-0.5 truncate text-[10px] text-slate-500">{tx.service} · {tx.time}</p>
+                  </div>
+                  <p className="text-xs font-black font-mono text-slate-900">{tx.amount}</p>
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-black text-slate-900">Today at a glance</h2>
+                  <p className="text-[11px] text-slate-500">Simple operating metrics</p>
+                </div>
+                <BarChart3 className="h-5 w-5 text-blue-600" />
+              </div>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <div className="mb-1.5 flex justify-between text-[10px] font-bold text-slate-500"><span>Capacity used</span><span>68%</span></div>
+                  <div className="h-2 rounded-full bg-slate-100"><div className="h-2 w-[68%] rounded-full bg-blue-600" /></div>
+                </div>
+                <div>
+                  <div className="mb-1.5 flex justify-between text-[10px] font-bold text-slate-500"><span>Daily sales target</span><span>78%</span></div>
+                  <div className="h-2 rounded-full bg-slate-100"><div className="h-2 w-[78%] rounded-full bg-emerald-500" /></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-black text-slate-900">Inventory attention</h2>
+                  <p className="mt-0.5 text-[11px] text-slate-600">{inventoryAlerts.length} items need review.</p>
+                  <div className="mt-3 space-y-2">
+                    {inventoryAlerts.map((item) => (
+                      <Link key={item.name} href="/inventory" className="flex items-center justify-between gap-3 rounded-xl bg-white/70 p-2.5 hover:bg-white">
+                        <div className="min-w-0">
+                          <p className="truncate text-[10px] font-extrabold text-slate-800">{item.name}</p>
+                          <p className="text-[9px] text-slate-500">{item.stock}</p>
+                        </div>
+                        <span className="shrink-0 text-[9px] font-black uppercase text-amber-700">{item.severity}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
 
-        {/* Total Calculation & Checkout Button */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-3">
-          <div className="space-y-1.5 text-xs">
-            <div className="flex justify-between text-slate-500">
-              <span>Subtotal</span>
-              <span className="font-mono font-bold text-slate-800">₱{subtotal.toFixed(2)}</span>
-            </div>
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-amber-600 font-bold">
-                <span>Discount</span>
-                <span className="font-mono">-₱{discountAmount.toFixed(2)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200">
-              <span>Total Due</span>
-              <span className="font-mono text-blue-600 text-base">₱{grandTotal.toFixed(2)}</span>
-            </div>
-          </div>
-
-          <button
-            onClick={handleOpenPayment}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-3.5 rounded-2xl text-xs transition shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2"
-          >
-            <ShieldCheck className="w-4 h-4" /> Process Payment & Queue
-          </button>
+        <div className="flex items-center justify-center gap-2 pb-2 text-[10px] font-medium text-slate-400">
+          <span>Mr. DM's Carwash</span>
+          <span>•</span>
+          <span>Manager dashboard</span>
         </div>
       </div>
-
-      {/* Payment Processing Modal */}
-      {showPaymentModal && (
-        <PaymentModal
-          totalAmount={grandTotal}
-          onClose={() => setShowPaymentModal(false)}
-          onComplete={handlePaymentSuccess}
-        />
-      )}
     </div>
   );
 }
