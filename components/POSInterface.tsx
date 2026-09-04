@@ -55,27 +55,27 @@ export default function POSInterface() {
       return;
     }
 
-    const directConflict = conflictsWithSelection(service, selectedServices);
-    if (directConflict) {
-      setMessage(`Already included in: ${directConflict.name}.`);
-      return;
-    }
-
     const isPackage = service.category === 'Car Wash Packages' || service.category === 'Premium Wash';
     const componentSelections = selectedServices.filter((item) => item.components?.length && !item.category.includes('Detailing'));
-    const upgradeSource = isPackage
-      ? [...componentSelections]
-      : [...componentSelections, service];
+    const upgradeSource = isPackage ? componentSelections : [...componentSelections, service];
     const upgrade = findPackageUpgrade(upgradeSource, vehicleType, vehicleSize);
 
-    if (upgrade && upgrade.id !== service.id) {
+    // If the cashier has selected individual services that make up a package,
+    // replace those items with the package instead of charging the components separately.
+    if (upgrade && (upgrade.id === service.id || !isPackage)) {
       const upgradeComponents = new Set(upgrade.components ?? []);
       const replaced = selectedServices.filter((item) => {
         if (!item.components?.length) return true;
         return !item.components.some((component) => upgradeComponents.has(component));
       });
       setSelectedServices([...replaced, upgrade]);
-      setMessage(`Upgraded to ${upgrade.name}.`);
+      setMessage(`Package selected: ${upgrade.name}.`);
+      return;
+    }
+
+    const directConflict = conflictsWithSelection(service, selectedServices);
+    if (directConflict) {
+      setMessage(`Already included in: ${directConflict.name}.`);
       return;
     }
 
