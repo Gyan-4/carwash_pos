@@ -1,49 +1,52 @@
 'use client';
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
 export type UserRole = 'cashier' | 'manager';
 
 interface User {
+  id?: string;
   name: string;
   role: UserRole;
 }
 
 interface AuthContextType {
   user: User | null;
-  role: UserRole;
-  setRole: (role: UserRole) => void;
-  login: (name: string, role: UserRole) => void;
-  logout: () => void;
+  role: UserRole | null;
+  loading: boolean;
+  login: (name: string, role: UserRole, id?: string) => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>({
-    name: 'Cashier Station 1',
-    role: 'cashier',
-  });
-  const [role, setRoleState] = useState<UserRole>('cashier');
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const setRole = (newRole: UserRole) => {
-    setRoleState(newRole);
-    if (user) {
-      setUser({ ...user, role: newRole });
-    }
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.user ?? null;
+      })
+      .then(setUser)
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const login = (name: string, loginRole: UserRole, id?: string) => {
+    setUser({ id, name, role: loginRole });
   };
 
-  const login = (name: string, loginRole: UserRole) => {
-    setRoleState(loginRole);
-    setUser({ name, role: loginRole });
-  };
-
-  const logout = () => {
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, setRole, login, logout }}>
+    <AuthContext.Provider value={{ user, role: user?.role ?? null, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -51,8 +54,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }
