@@ -1,7 +1,7 @@
 'use client';
 
-import POSInterface from '@/components/POSInterface';
+import LoginScreen from '@/components/LoginScreen';
 
 export default function Home() {
-  return <POSInterface />;
+  return <LoginScreen />;
 }
