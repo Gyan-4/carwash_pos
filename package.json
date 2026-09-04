@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:auth": "node scripts/seed-auth.mjs"
+    "seed:auth": "node --env-file=.env.local scripts/seed-auth.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.38.0",
