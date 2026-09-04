@@ -70,13 +70,7 @@ export const DETAILING_SERVICES: CatalogItem[] = [
   { id: 'headlight-ceramic', name: 'Headlight Restoration With Ceramic Coating (each light)', category: 'Headlight Restoration', prices: { small: 1500 }, description: 'Sanding, buffing and ceramic coating; 3–4 hours' },
 ];
 
-export const SERVICE_CATALOG: CatalogItem[] = [
-  ...CAR_WASH_PACKAGES,
-  ...PREMIUM_PACKAGES,
-  ...INDIVIDUAL_SERVICES,
-  ...DETAILING_SERVICES,
-  ...MOTORCYCLE_SERVICES,
-];
+export const SERVICE_CATALOG: CatalogItem[] = [...CAR_WASH_PACKAGES, ...PREMIUM_PACKAGES, ...INDIVIDUAL_SERVICES, ...DETAILING_SERVICES, ...MOTORCYCLE_SERVICES];
 
 export const VEHICLE_SIZES: { id: VehicleSize; label: string }[] = [
   { id: 'small', label: 'Small' },
@@ -88,5 +82,10 @@ export const VEHICLE_SIZES: { id: VehicleSize; label: string }[] = [
 
 export function getPrice(item: CatalogItem, vehicleType: VehicleType, vehicleSize: VehicleSize): number {
   if (vehicleType === 'motorcycle') return item.motorcyclePrice ?? 0;
-  return item.prices?.[vehicleSize] ?? 0;
+  return item.prices?.[vehicleSize] ?? item.prices?.small ?? 0;
+}
+
+export function hasPrice(item: CatalogItem, vehicleType: VehicleType, vehicleSize: VehicleSize): boolean {
+  if (vehicleType === 'motorcycle') return item.motorcyclePrice !== undefined;
+  return item.prices?.[vehicleSize] !== undefined || item.prices?.small !== undefined;
 }
