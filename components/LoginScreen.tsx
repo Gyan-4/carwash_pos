@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ShieldCheck, UserCheck, Lock, Car } from 'lucide-react';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { login } = useAuth();
   const [selectedRole, setSelectedRole] = useState<'cashier' | 'manager'>('cashier');
   const [pin, setPin] = useState('');
@@ -35,6 +37,7 @@ export default function LoginScreen() {
       }
 
       login(data.user.name, data.user.role);
+      router.replace(data.user.role === 'manager' ? '/dashboard' : '/');
     } catch {
       setError('Unable to connect to the server.');
     } finally {
