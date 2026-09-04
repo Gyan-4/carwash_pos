@@ -20,17 +20,8 @@ export interface CatalogItem {
   components?: ServiceComponent[];
 }
 
-const carWash = (
-  id: string,
-  name: string,
-  prices: [number, number, number, number, number],
-  components: ServiceComponent[],
-): CatalogItem => ({
-  id,
-  name,
-  category: 'Car Wash Packages',
-  prices: { small: prices[0], medium: prices[1], large: prices[2], xl: prices[3], xxl: prices[4] },
-  components,
+const carWash = (id: string, name: string, prices: [number, number, number, number, number], components: ServiceComponent[]): CatalogItem => ({
+  id, name, category: 'Car Wash Packages', prices: { small: prices[0], medium: prices[1], large: prices[2], xl: prices[3], xxl: prices[4] }, components,
 });
 
 export const CAR_WASH_PACKAGES: CatalogItem[] = [
@@ -116,22 +107,20 @@ export function findPackageUpgrade(selected: CatalogItem[], vehicleType: Vehicle
   const components = Array.from(new Set(selected.flatMap((item) => item.components ?? [])));
   if (components.length < 2) return undefined;
 
-  const packages = vehicleType === 'motorcycle'
-    ? MOTORCYCLE_SERVICES
-    : [...CAR_WASH_PACKAGES, ...PREMIUM_PACKAGES];
+  const packages = vehicleType === 'motorcycle' ? MOTORCYCLE_SERVICES : [...CAR_WASH_PACKAGES, ...PREMIUM_PACKAGES];
 
-  // Only upgrade when the cashier selected the exact components of a package.
-  // A package containing extra services (for example Engine Wash) must not be
-  // selected unless Engine Wash was also selected.
+  // Packages stay available whenever they contain the currently selected
+  // options. Auto-upgrade happens only after ALL package components are selected.
   return packages
-    .filter((item) => sameComponents(item.components, components) && hasPrice(item, vehicleType, vehicleSize))
-    .sort((a, b) => getPrice(a, vehicleType, vehicleSize) - getPrice(b, vehicleType, vehicleSize))[0];
+    .filter((item) => hasPrice(item, vehicleType, vehicleSize))
+    .filter((item) => sameComponents(item.components, components))[0];
 }
 
-export function conflictsWithSelection(item: CatalogItem, selected: CatalogItem[]): CatalogItem | undefined {
-  if (!item.components?.length) return undefined;
-  return selected.find((selectedItem) => {
-    if (selectedItem.id === item.id) return false;
-    return selectedItem.components?.some((component) => item.components?.includes(component));
-  });
+export function packageContainsSelection(packageItem: CatalogItem, selected: CatalogItem[]): boolean {
+  const selectedComponents = Array.from(new Set(selected.flatMap((item) => item.components ?? [])));
+  return selectedComponents.length > 0 && selectedComponents.every((component) => packageItem.components?.includes(component));
+}
+
+export function conflictsWithSelection(_item: CatalogItem, _selected: CatalogItem[]): CatalogItem | undefined {
+  return undefined;
 }
