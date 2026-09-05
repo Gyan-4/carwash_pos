@@ -12,6 +12,7 @@ import {
   Package,
   BarChart3,
   Tag,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -36,6 +37,7 @@ export default function Sidebar() {
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
     { name: 'Transactions', href: '/history', icon: Clock },
     { name: 'Promos & Discounts', href: '/promos', icon: Tag },
+    { name: 'Audit Logs', href: '/audit', icon: FileText },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 
