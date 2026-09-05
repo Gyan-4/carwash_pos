@@ -9,6 +9,8 @@ import { InventoryItem } from '@/models/InventoryItem';
 import { InventoryMovement } from '@/models/InventoryMovement';
 import { Promo } from '@/models/Promo';
 import { Shift } from '@/models/Shift';
+import { SystemSetting } from '@/models/SystemSetting';
+import { AuditLog } from '@/models/AuditLog';
 import { SERVICE_CATALOG, getPrice, hasPrice, type CatalogItem, type VehicleSize, type VehicleType } from '@/lib/serviceCatalog';
 
 const VEHICLE_TYPES: VehicleType[] = ['motorcycle', 'sedan', 'suv', 'truck'];
@@ -90,6 +92,12 @@ export async function POST(req: Request) {
     await connectToDatabase();
     const shift = await Shift.findOne({ cashierId: user.id, status: 'open' }).sort({ openedAt: -1 });
     if (!shift) return NextResponse.json({ success: false, error: 'No open cashier shift. Open a shift before processing a sale.' }, { status: 409 });
+
+    const settings = await SystemSetting.findOne({ key: 'default' }).lean();
+    const enabledPaymentMethods = settings?.paymentMethods || { cash: true, gcash: true, card: true };
+    if (enabledPaymentMethods[paymentMethod] !== true) {
+      return NextResponse.json({ success: false, error: `${paymentMethod.toUpperCase()} payments are currently disabled in system settings.` }, { status: 409 });
+    }
 
     let discount = 0;
     let promoId = undefined;
@@ -179,6 +187,27 @@ export async function POST(req: Request) {
         } else {
           await Customer.create([{ name: customerName, normalizedName, vehicles: [{ plate, vehicleType, vehicleSize, visitCount: 1, lastVisitAt: now }], totalVisits: 1, lastVisitAt: now }], { session });
         }
+
+        await AuditLog.create([{
+          userId: user.id,
+          userName: user.name,
+          role: user.role,
+          action: 'SALE_COMPLETED',
+          transactionId: transaction._id,
+          transactionNo,
+          reason: 'POS sale completed',
+          metadata: {
+            total,
+            discount,
+            paymentMethod,
+            plate,
+            vehicleType,
+            vehicleSize,
+            serviceIds,
+            promoName: promoName || undefined,
+            shiftId: shift._id,
+          },
+        }], { session });
       });
       return NextResponse.json({ success: true, transaction, pricing: { subtotal, discount, total, change } }, { status: 201 });
     } catch (error) {
