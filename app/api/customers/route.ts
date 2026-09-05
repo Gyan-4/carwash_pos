@@ -28,9 +28,15 @@ export async function GET(req: Request) {
     type View = { _id: string; name: string; vehicles: Vehicle[]; totalVisits: number; totalSpent: number; lastVisitAt?: Date; lastService?: string; history: History[] };
 
     const result = new Map<string, View>();
+    const removedByPlate = new Map<string, Date>();
+
     for (const c of stored) {
       const vehicles = (c.vehicles || []).map((v: any) => ({ plate: String(v.plate || '').toUpperCase(), vehicleType: v.vehicleType, vehicleSize: v.vehicleSize, visitCount: 0, lastVisitAt: undefined }));
       result.set(String(c._id), { _id: String(c._id), name: c.name || '', vehicles, totalVisits: 0, totalSpent: 0, lastVisitAt: undefined, lastService: undefined, history: [] });
+      for (const removed of (c.removedVehicles || []) as any[]) {
+        const removedPlate = String(removed.plate || '').trim().toUpperCase();
+        if (removedPlate && removed.removedAt) removedByPlate.set(removedPlate, new Date(removed.removedAt));
+      }
     }
 
     const byName = new Map<string, View>();
@@ -44,6 +50,9 @@ export async function GET(req: Request) {
       const plate = String(tx.plate || '').trim().toUpperCase();
       const transactionName = String(tx.customerName || '').trim();
       if (!plate) continue;
+
+      const removedAt = removedByPlate.get(plate);
+      if (removedAt && new Date(tx.createdAt).getTime() <= removedAt.getTime()) continue;
 
       let customer = byPlate.get(plate);
       if (!customer && !isUnnamed(transactionName)) customer = byName.get(normalizeName(transactionName));
@@ -184,5 +193,53 @@ export async function PATCH(req: Request) {
   } catch (error) {
     console.error('[Customers API] PATCH failed:', error);
     return NextResponse.json({ success: false, error: 'Unable to update customer.' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
+    if (user.role !== 'manager') return NextResponse.json({ success: false, error: 'Only managers can remove vehicles.' }, { status: 403 });
+
+    const body = await req.json();
+    const customerId = String(body.customerId || '');
+    const plate = String(body.plate || '').trim().toUpperCase();
+    if (!customerId || !plate) return NextResponse.json({ success: false, error: 'Customer and plate are required.' }, { status: 400 });
+    if (!mongoose.isValidObjectId(customerId)) return NextResponse.json({ success: false, error: 'Invalid customer record.' }, { status: 400 });
+
+    await connectToDatabase();
+    const session = await mongoose.startSession();
+    let remainingVehicles = 0;
+
+    try {
+      await session.withTransaction(async () => {
+        const customer = await Customer.findById(customerId).session(session);
+        if (!customer) throw new Error('CUSTOMER_NOT_FOUND');
+
+        const exists = customer.vehicles.some((vehicle: any) => String(vehicle.plate || '').toUpperCase() === plate);
+        if (!exists) throw new Error('VEHICLE_NOT_FOUND');
+
+        customer.vehicles = customer.vehicles.filter((vehicle: any) => String(vehicle.plate || '').toUpperCase() !== plate) as any;
+        const removedVehicles = (customer.removedVehicles || []) as any[];
+        const now = new Date();
+        customer.removedVehicles = removedVehicles.filter((item: any) => String(item.plate || '').toUpperCase() !== plate) as any;
+        customer.removedVehicles.push({ plate, removedAt: now } as any);
+        remainingVehicles = customer.vehicles.length;
+        await customer.save({ session });
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'CUSTOMER_NOT_FOUND') return NextResponse.json({ success: false, error: 'Customer record not found.' }, { status: 404 });
+      if (message === 'VEHICLE_NOT_FOUND') return NextResponse.json({ success: false, error: 'Vehicle record not found.' }, { status: 404 });
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+
+    return NextResponse.json({ success: true, plate, remainingVehicles });
+  } catch (error) {
+    console.error('[Customers API] DELETE failed:', error);
+    return NextResponse.json({ success: false, error: 'Unable to remove vehicle.' }, { status: 500 });
   }
 }
