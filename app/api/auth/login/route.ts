@@ -5,14 +5,19 @@ import { createSession, verifyPin } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
-    const { role, pin } = await req.json();
+    const { role, pin, name } = await req.json();
 
     if (!['cashier', 'manager'].includes(role) || typeof pin !== 'string' || !/^\d{4}$/.test(pin)) {
       return NextResponse.json({ success: false, error: 'Invalid credentials.' }, { status: 400 });
     }
 
     await connectToDatabase();
-    const user = await User.findOne({ role, active: true });
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    const user = await User.findOne({
+      role,
+      active: true,
+      ...(trimmedName ? { name: { $regex: `^${trimmedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } } : {}),
+    });
 
     if (!user || !verifyPin(pin, user.pinHash)) {
       return NextResponse.json({ success: false, error: 'Invalid credentials.' }, { status: 401 });
