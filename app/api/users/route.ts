@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { connectToDatabase } from '@/lib/mongodb';
 import { getAuthenticatedUser, hashPin, User } from '@/lib/auth';
 import { AuditLog } from '@/models/AuditLog';
+import { Transaction } from '@/models/Transaction';
 
 async function requireManager() {
   const user = await getAuthenticatedUser();
@@ -32,25 +33,14 @@ export async function POST(req: Request) {
     const name = String(body.name || '').trim();
     const role = body.role;
     const pin = String(body.pin || '');
-
     if (!name || name.length > 100) return NextResponse.json({ error: 'Enter a valid name.' }, { status: 400 });
     if (!['cashier', 'manager'].includes(role)) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 });
     if (!/^\d{4}$/.test(pin)) return NextResponse.json({ error: 'PIN must be exactly 4 digits.' }, { status: 400 });
-
     await connectToDatabase();
     const duplicate = await User.findOne({ name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } });
     if (duplicate) return NextResponse.json({ error: 'A user with that name already exists.' }, { status: 409 });
-
     const user = await User.create({ name, role, pinHash: hashPin(pin), active: true });
-    await AuditLog.create({
-      userId: auth.user.id,
-      userName: auth.user.name,
-      role: auth.user.role,
-      action: 'USER_CREATED',
-      reason: `Created ${role} account for ${name}`,
-      metadata: { createdUserId: String(user._id), createdUserName: name, createdRole: role },
-    });
-
+    await AuditLog.create({ userId: auth.user.id, userName: auth.user.name, role: auth.user.role, action: 'USER_CREATED', reason: `Created ${role} account for ${name}`, metadata: { createdUserId: String(user._id), createdUserName: name, createdRole: role } });
     return NextResponse.json({ success: true, user: { id: String(user._id), name: user.name, role: user.role, active: user.active } }, { status: 201 });
   } catch (error) {
     console.error('POST /api/users failed:', error);
@@ -65,11 +55,9 @@ export async function PATCH(req: Request) {
     const body = await req.json();
     const id = String(body.id || '');
     if (!mongoose.isValidObjectId(id)) return NextResponse.json({ error: 'Invalid user.' }, { status: 400 });
-
     await connectToDatabase();
     const target = await User.findById(id);
     if (!target) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
-
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) {
       const name = String(body.name || '').trim();
@@ -92,24 +80,36 @@ export async function PATCH(req: Request) {
       if (String(target._id) === auth.user.id && body.active === false) return NextResponse.json({ error: 'You cannot deactivate your own account.' }, { status: 400 });
       updates.active = body.active;
     }
-
     Object.assign(target, updates);
     await target.save();
-
     const changedFields = Object.keys(updates).filter((field) => field !== 'pinHash');
     const action = body.pin !== undefined && changedFields.length === 0 ? 'USER_PIN_CHANGED' : 'USER_UPDATED';
-    await AuditLog.create({
-      userId: auth.user.id,
-      userName: auth.user.name,
-      role: auth.user.role,
-      action,
-      reason: action === 'USER_PIN_CHANGED' ? `Changed PIN for ${target.name}` : `Updated user ${target.name}`,
-      metadata: { targetUserId: id, targetUserName: target.name, changedFields },
-    });
-
+    await AuditLog.create({ userId: auth.user.id, userName: auth.user.name, role: auth.user.role, action, reason: action === 'USER_PIN_CHANGED' ? `Changed PIN for ${target.name}` : `Updated user ${target.name}`, metadata: { targetUserId: id, targetUserName: target.name, changedFields } });
     return NextResponse.json({ success: true, user: { id: String(target._id), name: target.name, role: target.role, active: target.active } });
   } catch (error) {
     console.error('PATCH /api/users failed:', error);
     return NextResponse.json({ error: 'Unable to update user.' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const auth = await requireManager();
+    if (auth.error) return auth.error;
+    const body = await req.json();
+    const id = String(body.id || '');
+    if (!mongoose.isValidObjectId(id)) return NextResponse.json({ error: 'Invalid user.' }, { status: 400 });
+    if (id === auth.user.id) return NextResponse.json({ error: 'You cannot delete your own account.' }, { status: 400 });
+    await connectToDatabase();
+    const target = await User.findById(id);
+    if (!target) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+    const transactionCount = await Transaction.countDocuments({ createdBy: target._id });
+    if (transactionCount > 0) return NextResponse.json({ error: 'This user has transaction history and cannot be deleted. Deactivate the account instead.' }, { status: 409 });
+    await User.deleteOne({ _id: target._id });
+    await AuditLog.create({ userId: auth.user.id, userName: auth.user.name, role: auth.user.role, action: 'USER_DELETED', reason: `Deleted user ${target.name}`, metadata: { deletedUserId: id, deletedUserName: target.name, deletedRole: target.role } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('DELETE /api/users failed:', error);
+    return NextResponse.json({ error: 'Unable to delete user.' }, { status: 500 });
   }
 }
