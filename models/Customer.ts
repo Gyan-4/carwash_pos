@@ -9,8 +9,8 @@ const VehicleSchema = new Schema({
 }, { _id: false });
 
 const CustomerSchema = new Schema({
-  name: { type: String, required: true, trim: true },
-  normalizedName: { type: String, required: true, index: true },
+  name: { type: String, default: '', trim: true },
+  normalizedName: { type: String, default: '', index: true },
   vehicles: { type: [VehicleSchema], default: [] },
   totalVisits: { type: Number, default: 0 },
   lastVisitAt: { type: Date },
