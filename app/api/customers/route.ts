@@ -47,7 +47,6 @@ export async function GET(req: Request) {
 
       let customer = byPlate.get(plate);
       if (!customer && !isUnnamed(transactionName)) customer = byName.get(normalizeName(transactionName));
-
       if (!customer) {
         const key = `plate:${plate}`;
         customer = result.get(key) || { _id: key, name: '', vehicles: [], totalVisits: 0, totalSpent: 0, lastVisitAt: undefined, lastService: undefined, history: [] };
@@ -71,7 +70,6 @@ export async function GET(req: Request) {
         vehicle.vehicleType = tx.vehicleType;
         vehicle.vehicleSize = tx.vehicleSize;
       }
-
       byPlate.set(plate, customer);
       customer.totalVisits += 1;
       customer.totalSpent += Number(tx.total || 0);
@@ -81,9 +79,7 @@ export async function GET(req: Request) {
         customer.lastService = (tx.services || []).map((s: any) => s.name).join(', ') || 'Car wash';
       }
 
-      if (customer.history.length < 20) {
-        customer.history.push({ transactionNo: tx.transactionNo, plate, vehicleType: tx.vehicleType, vehicleSize: tx.vehicleSize, services: (tx.services || []).map((s: any) => ({ name: s.name, price: Number(s.price || 0) })), total: Number(tx.total || 0), discount: Number(tx.discount || 0), paymentMethod: tx.paymentMethod, createdAt: tx.createdAt });
-      }
+      if (customer.history.length < 20) customer.history.push({ transactionNo: tx.transactionNo, plate, vehicleType: tx.vehicleType, vehicleSize: tx.vehicleSize, services: (tx.services || []).map((s: any) => ({ name: s.name, price: Number(s.price || 0) })), total: Number(tx.total || 0), discount: Number(tx.discount || 0), paymentMethod: tx.paymentMethod, createdAt: tx.createdAt });
     }
 
     const customers = [...result.values()]
@@ -152,7 +148,7 @@ export async function PATCH(req: Request) {
     if (mode === 'add-vehicle') {
       if (customer.vehicles.some((v: any) => v.plate === plate)) return NextResponse.json({ success: false, error: 'That vehicle is already linked to this customer.' }, { status: 409 });
       customer.vehicles.push({ plate, vehicleType, ...(vehicleType === 'motorcycle' ? {} : { vehicleSize }), visitCount: 0 } as any);
-      if (name !== customer.name && !isUnnamed(name)) {
+      if (!isUnnamed(name)) {
         customer.name = name;
         customer.normalizedName = normalizeName(name);
       }
@@ -164,11 +160,7 @@ export async function PATCH(req: Request) {
     const existing = customer.vehicles.find((v: any) => v.plate === targetPlate);
     if (!existing) return NextResponse.json({ success: false, error: 'The vehicle you are editing could not be found.' }, { status: 404 });
 
-    const duplicateInCustomer = customer.vehicles.some((v: any) => v !== existing && v.plate === plate);
-    if (duplicateInCustomer) return NextResponse.json({ success: false, error: 'That plate is already linked to this customer.' }, { status: 409 });
-
-    const oldPlates = customer.vehicles.map((v: any) => String(v.plate || '').toUpperCase()).filter(Boolean);
-    if (!oldPlates.includes(targetPlate)) oldPlates.push(targetPlate);
+    if (customer.vehicles.some((v: any) => v !== existing && v.plate === plate)) return NextResponse.json({ success: false, error: 'That plate is already linked to this customer.' }, { status: 409 });
 
     const session = await mongoose.startSession();
     try {
@@ -180,9 +172,9 @@ export async function PATCH(req: Request) {
         customer.normalizedName = name ? normalizeName(name) : '';
         await customer.save({ session });
 
-        if (oldPlates.length) {
-          await Transaction.updateMany({ plate: { $in: oldPlates } }, { $set: { customerName: name, ...(plate !== targetPlate ? { plate } : {}) } }, { session });
-        }
+        await Transaction.updateMany({ plate: targetPlate }, { $set: { plate, customerName: name } }, { session });
+        const otherPlates = customer.vehicles.map((v: any) => String(v.plate || '').toUpperCase()).filter((p: string) => p && p !== plate);
+        if (otherPlates.length) await Transaction.updateMany({ plate: { $in: otherPlates } }, { $set: { customerName: name } }, { session });
       });
     } finally {
       await session.endSession();
