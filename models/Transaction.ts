@@ -16,6 +16,7 @@ const TransactionSchema = new Schema({
   paymentMethod: { type: String, enum: ['cash', 'gcash', 'card'], default: 'cash' },
   amountPaid: { type: Number, default: 0 },
   change: { type: Number, default: 0 },
+  shiftId: { type: Schema.Types.ObjectId, ref: 'Shift' },
   status: { type: String, enum: ['completed', 'voided', 'deleted'], default: 'completed' },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   voidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -25,5 +26,7 @@ const TransactionSchema = new Schema({
   deletedAt: { type: Date },
   deleteReason: { type: String },
 }, { timestamps: true });
+
+TransactionSchema.index({ shiftId: 1, createdAt: -1 });
 
 export const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', TransactionSchema);
