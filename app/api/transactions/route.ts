@@ -11,6 +11,7 @@ import { Promo } from '@/models/Promo';
 import { Shift } from '@/models/Shift';
 import { SystemSetting } from '@/models/SystemSetting';
 import { AuditLog } from '@/models/AuditLog';
+import { Queue } from '@/models/Queue';
 import { SERVICE_CATALOG, getPrice, hasPrice, type CatalogItem, type VehicleSize, type VehicleType } from '@/lib/serviceCatalog';
 
 const VEHICLE_TYPES: VehicleType[] = ['motorcycle', 'sedan', 'suv', 'truck'];
@@ -164,6 +165,20 @@ export async function POST(req: Request) {
           status: 'completed',
         }], { session });
         transaction = created[0];
+
+        await Queue.create([{
+          transactionId: transaction._id,
+          transactionNo,
+          plate,
+          customerName: String(body.customerName || '').trim() || 'Walk-in Customer',
+          vehicleType,
+          vehicleSize,
+          services: pricedServices.map((service) => service.name),
+          total,
+          status: 'waiting',
+          washer: 'Unassigned',
+          createdBy: user.id,
+        }], { session });
 
         for (const entry of deductions) {
           const before = Number(entry.item.quantity);
