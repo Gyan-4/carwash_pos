@@ -28,8 +28,28 @@ export async function GET() {
       ]),
       Transaction.find({ status: { $ne: 'deleted' } }).sort({ createdAt: -1 }).limit(8).lean(),
       Transaction.aggregate([
-        { $match: { status: 'completed', customerName: { $nin: ['', null, 'Walk-in Customer'] } } },
-        { $group: { _id: { $toLower: { $trim: { input: '$customerName' } } } } },
+        {
+          $match: {
+            status: 'completed',
+            plate: { $nin: ['', null] },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: [{ $trim: { input: { $ifNull: ['$customerName', ''] } } }, ''] },
+                    { $ne: [{ $toLower: { $trim: { input: { $ifNull: ['$customerName', ''] } } } }, 'walk-in customer'] },
+                  ],
+                },
+                { $concat: ['name:', { $toLower: { $trim: { input: '$customerName' } } }] },
+                { $concat: ['plate:', { $toUpper: { $trim: { input: '$plate' } } }] },
+              ],
+            },
+          },
+        },
         { $count: 'count' },
       ]),
       Transaction.aggregate([
