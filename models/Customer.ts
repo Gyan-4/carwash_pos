@@ -8,15 +8,22 @@ const VehicleSchema = new Schema({
   lastVisitAt: { type: Date },
 }, { _id: false });
 
+const RemovedVehicleSchema = new Schema({
+  plate: { type: String, required: true, trim: true, uppercase: true },
+  removedAt: { type: Date, required: true },
+}, { _id: false });
+
 const CustomerSchema = new Schema({
   name: { type: String, default: '', trim: true },
   normalizedName: { type: String, default: '', index: true },
   vehicles: { type: [VehicleSchema], default: [] },
+  removedVehicles: { type: [RemovedVehicleSchema], default: [] },
   totalVisits: { type: Number, default: 0 },
   lastVisitAt: { type: Date },
 }, { timestamps: true });
 
 CustomerSchema.index({ normalizedName: 1 });
 CustomerSchema.index({ 'vehicles.plate': 1 });
+CustomerSchema.index({ 'removedVehicles.plate': 1 });
 
 export const Customer = mongoose.models.Customer || mongoose.model('Customer', CustomerSchema);
