@@ -8,12 +8,12 @@ import { Customer } from '@/models/Customer';
 import { InventoryItem } from '@/models/InventoryItem';
 import { InventoryMovement } from '@/models/InventoryMovement';
 import { Promo } from '@/models/Promo';
+import { Shift } from '@/models/Shift';
 import { SERVICE_CATALOG, getPrice, hasPrice, type CatalogItem, type VehicleSize, type VehicleType } from '@/lib/serviceCatalog';
 
 const VEHICLE_TYPES: VehicleType[] = ['motorcycle', 'sedan', 'suv', 'truck'];
 const VEHICLE_SIZES: VehicleSize[] = ['small', 'medium', 'large', 'xl', 'xxl'];
 const PAYMENT_METHODS = ['cash', 'gcash', 'card'] as const;
-
 type PaymentMethod = typeof PAYMENT_METHODS[number];
 
 export async function GET() {
@@ -55,9 +55,7 @@ export async function POST(req: Request) {
     if (!plate || !Array.isArray(body.services) || body.services.length === 0) {
       return NextResponse.json({ success: false, error: 'Plate and at least one service are required.' }, { status: 400 });
     }
-    if (!VEHICLE_TYPES.includes(vehicleType)) {
-      return NextResponse.json({ success: false, error: 'Invalid vehicle type.' }, { status: 400 });
-    }
+    if (!VEHICLE_TYPES.includes(vehicleType)) return NextResponse.json({ success: false, error: 'Invalid vehicle type.' }, { status: 400 });
     if (vehicleType === 'motorcycle') {
       if (vehicleSize !== undefined) return NextResponse.json({ success: false, error: 'Motorcycles must not include a vehicle size.' }, { status: 400 });
     } else if (!vehicleSize || !VEHICLE_SIZES.includes(vehicleSize)) {
@@ -90,6 +88,8 @@ export async function POST(req: Request) {
     const subtotal = pricedServices.reduce((sum, service) => sum + service.price, 0);
 
     await connectToDatabase();
+    const shift = await Shift.findOne({ cashierId: user.id, status: 'open' }).sort({ openedAt: -1 });
+    if (!shift) return NextResponse.json({ success: false, error: 'No open cashier shift. Open a shift before processing a sale.' }, { status: 409 });
 
     let discount = 0;
     let promoId = undefined;
@@ -129,19 +129,10 @@ export async function POST(req: Request) {
       let transaction: any;
       await session.withTransaction(async () => {
         const inventoryItems = await InventoryItem.find({ active: true, 'usage.serviceId': { $in: serviceIds } }).session(session).lean();
-        const deductions = inventoryItems
-          .map((item: any) => ({
-            item,
-            quantity: item.usage
-              .filter((usage: any) => serviceIds.includes(String(usage.serviceId)))
-              .reduce((sum: number, usage: any) => sum + Number(usage.quantity || 0), 0),
-          }))
-          .filter((entry: any) => entry.quantity > 0);
+        const deductions = inventoryItems.map((item: any) => ({ item, quantity: item.usage.filter((usage: any) => serviceIds.includes(String(usage.serviceId))).reduce((sum: number, usage: any) => sum + Number(usage.quantity || 0), 0) })).filter((entry: any) => entry.quantity > 0);
 
         for (const entry of deductions) {
-          if (Number(entry.item.quantity) < entry.quantity) {
-            throw new Error(`INSUFFICIENT_INVENTORY:${entry.item.name}:${entry.item.quantity}:${entry.quantity}:${entry.item.unit}`);
-          }
+          if (Number(entry.item.quantity) < entry.quantity) throw new Error(`INSUFFICIENT_INVENTORY:${entry.item.name}:${entry.item.quantity}:${entry.quantity}:${entry.item.unit}`);
         }
 
         const created = await Transaction.create([{
@@ -160,6 +151,7 @@ export async function POST(req: Request) {
           paymentMethod,
           amountPaid,
           change,
+          shiftId: shift._id,
           createdBy: user.id,
           status: 'completed',
         }], { session });
@@ -168,77 +160,35 @@ export async function POST(req: Request) {
         for (const entry of deductions) {
           const before = Number(entry.item.quantity);
           const after = before - entry.quantity;
-          const updated = await InventoryItem.updateOne(
-            { _id: entry.item._id, active: true, quantity: { $gte: entry.quantity } },
-            { $inc: { quantity: -entry.quantity } },
-            { session },
-          );
-          if (updated.modifiedCount !== 1) {
-            throw new Error(`INVENTORY_CHANGED:${entry.item.name}`);
-          }
-          await InventoryMovement.create([{
-            itemId: entry.item._id,
-            itemName: entry.item.name,
-            type: 'sale',
-            quantity: -entry.quantity,
-            beforeQuantity: before,
-            afterQuantity: after,
-            transactionId: transaction._id,
-            transactionNo,
-            userId: user.id,
-            reason: 'POS sale',
-          }], { session });
+          const updated = await InventoryItem.updateOne({ _id: entry.item._id, active: true, quantity: { $gte: entry.quantity } }, { $inc: { quantity: -entry.quantity } }, { session });
+          if (updated.modifiedCount !== 1) throw new Error(`INVENTORY_CHANGED:${entry.item.name}`);
+          await InventoryMovement.create([{ itemId: entry.item._id, itemName: entry.item.name, type: 'sale', quantity: -entry.quantity, beforeQuantity: before, afterQuantity: after, transactionId: transaction._id, transactionNo, userId: user.id, reason: 'POS sale' }], { session });
         }
 
         const customerName = String(body.customerName || '').trim() || 'Walk-in Customer';
         const normalizedName = customerName.toLowerCase();
         const customer = await Customer.findOne({ 'vehicles.plate': plate }).session(session);
-
         if (customer) {
           const vehicle = customer.vehicles.find((item: any) => item.plate === plate);
-          if (vehicle) {
-            vehicle.vehicleType = vehicleType;
-            vehicle.vehicleSize = vehicleSize || vehicle.vehicleSize;
-            vehicle.visitCount = Number(vehicle.visitCount || 0) + 1;
-            vehicle.lastVisitAt = now;
-          } else {
-            customer.vehicles.push({ plate, vehicleType, vehicleSize, visitCount: 1, lastVisitAt: now });
-          }
+          if (vehicle) { vehicle.vehicleType = vehicleType; vehicle.vehicleSize = vehicleSize || vehicle.vehicleSize; vehicle.visitCount = Number(vehicle.visitCount || 0) + 1; vehicle.lastVisitAt = now; }
+          else customer.vehicles.push({ plate, vehicleType, vehicleSize, visitCount: 1, lastVisitAt: now });
           customer.totalVisits = Number(customer.totalVisits || 0) + 1;
           customer.lastVisitAt = now;
-          if (customer.name === 'Walk-in Customer' && customerName !== 'Walk-in Customer') {
-            customer.name = customerName;
-            customer.normalizedName = normalizedName;
-          }
+          if (customer.name === 'Walk-in Customer' && customerName !== 'Walk-in Customer') { customer.name = customerName; customer.normalizedName = normalizedName; }
           await customer.save({ session });
         } else {
-          await Customer.create([{
-            name: customerName,
-            normalizedName,
-            vehicles: [{ plate, vehicleType, vehicleSize, visitCount: 1, lastVisitAt: now }],
-            totalVisits: 1,
-            lastVisitAt: now,
-          }], { session });
+          await Customer.create([{ name: customerName, normalizedName, vehicles: [{ plate, vehicleType, vehicleSize, visitCount: 1, lastVisitAt: now }], totalVisits: 1, lastVisitAt: now }], { session });
         }
       });
-
       return NextResponse.json({ success: true, transaction, pricing: { subtotal, discount, total, change } }, { status: 201 });
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
-      if (message.startsWith('INSUFFICIENT_INVENTORY:')) {
-        const [, name, available, required, unit] = message.split(':');
-        return NextResponse.json({ success: false, error: `Insufficient inventory: ${name}. Available ${available} ${unit}, required ${required} ${unit}.` }, { status: 409 });
-      }
-      if (message.startsWith('INVENTORY_CHANGED:')) {
-        const [, name] = message.split(':');
-        return NextResponse.json({ success: false, error: `Inventory changed while saving ${name}. Please review stock and try again.` }, { status: 409 });
-      }
+      if (message.startsWith('INSUFFICIENT_INVENTORY:')) { const [, name, available, required, unit] = message.split(':'); return NextResponse.json({ success: false, error: `Insufficient inventory: ${name}. Available ${available} ${unit}, required ${required} ${unit}.` }, { status: 409 }); }
+      if (message.startsWith('INVENTORY_CHANGED:')) { const [, name] = message.split(':'); return NextResponse.json({ success: false, error: `Inventory changed while saving ${name}. Please review stock and try again.` }, { status: 409 }); }
       throw error;
-    } finally {
-      await session.endSession();
-    }
+    } finally { await session.endSession(); }
   } catch (error) {
     console.error('POST /api/transactions failed:', error);
-    return NextResponse.json({ success: false, error: 'Unable to save transaction.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: error instanceof Error && error.message.includes('No open cashier shift') ? error.message : 'Unable to save transaction.' }, { status: 500 });
   }
 }
