@@ -29,13 +29,7 @@ export async function GET(req: Request) {
 
     const result = new Map<string, View>();
     for (const c of stored) {
-      const vehicles = (c.vehicles || []).map((v: any) => ({
-        plate: String(v.plate || '').toUpperCase(),
-        vehicleType: v.vehicleType,
-        vehicleSize: v.vehicleSize,
-        visitCount: 0,
-        lastVisitAt: undefined,
-      }));
+      const vehicles = (c.vehicles || []).map((v: any) => ({ plate: String(v.plate || '').toUpperCase(), vehicleType: v.vehicleType, vehicleSize: v.vehicleSize, visitCount: 0, lastVisitAt: undefined }));
       result.set(String(c._id), { _id: String(c._id), name: c.name || '', vehicles, totalVisits: 0, totalSpent: 0, lastVisitAt: undefined, lastService: undefined, history: [] });
     }
 
@@ -88,30 +82,16 @@ export async function GET(req: Request) {
       }
 
       if (customer.history.length < 20) {
-        customer.history.push({
-          transactionNo: tx.transactionNo,
-          plate,
-          vehicleType: tx.vehicleType,
-          vehicleSize: tx.vehicleSize,
-          services: (tx.services || []).map((s: any) => ({ name: s.name, price: Number(s.price || 0) })),
-          total: Number(tx.total || 0),
-          discount: Number(tx.discount || 0),
-          paymentMethod: tx.paymentMethod,
-          createdAt: tx.createdAt,
-        });
+        customer.history.push({ transactionNo: tx.transactionNo, plate, vehicleType: tx.vehicleType, vehicleSize: tx.vehicleSize, services: (tx.services || []).map((s: any) => ({ name: s.name, price: Number(s.price || 0) })), total: Number(tx.total || 0), discount: Number(tx.discount || 0), paymentMethod: tx.paymentMethod, createdAt: tx.createdAt });
       }
     }
 
     const customers = [...result.values()]
       .filter(c => c.vehicles.length > 0)
       .filter(c => !regex || regex.test(c.name || 'Customer') || c.vehicles.some(v => regex.test(v.plate)))
-      .sort((a, b) =>
-        (b.lastVisitAt ? new Date(b.lastVisitAt).getTime() : 0) - (a.lastVisitAt ? new Date(a.lastVisitAt).getTime() : 0) ||
-        (a.name || a.vehicles[0]?.plate || '').localeCompare(b.name || b.vehicles[0]?.plate || '')
-      );
+      .sort((a, b) => (b.lastVisitAt ? new Date(b.lastVisitAt).getTime() : 0) - (a.lastVisitAt ? new Date(a.lastVisitAt).getTime() : 0) || (a.name || a.vehicles[0]?.plate || '').localeCompare(b.name || b.vehicles[0]?.plate || ''));
 
-    const normalized = customers.map(c => ({ ...c, name: c.name || c.vehicles[0]?.plate || 'Customer', displayName: c.name || c.vehicles[0]?.plate || 'Customer', named: Boolean(c.name) }));
-    return NextResponse.json({ success: true, customers: normalized });
+    return NextResponse.json({ success: true, customers: customers.map(c => ({ ...c, name: c.name || c.vehicles[0]?.plate || 'Customer', displayName: c.name || c.vehicles[0]?.plate || 'Customer', named: Boolean(c.name) })) });
   } catch (error) {
     console.error('[Customers API] GET failed:', error);
     return NextResponse.json({ success: false, error: 'Unable to load customers.' }, { status: 500 });
@@ -122,7 +102,6 @@ export async function POST(req: Request) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
-
     const body = await req.json();
     const name = String(body.name || '').trim();
     const vehicle = body.vehicle || {};
@@ -136,7 +115,6 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
     if (await Customer.findOne({ 'vehicles.plate': plate })) return NextResponse.json({ success: false, error: 'That plate is already registered.' }, { status: 409 });
-
     const customer = await Customer.create({ name, normalizedName: name ? normalizeName(name) : '', vehicles: [{ plate, vehicleType, ...(vehicleType === 'motorcycle' ? {} : { vehicleSize }), visitCount: 0 }], totalVisits: 0 });
     return NextResponse.json({ success: true, customer }, { status: 201 });
   } catch (error) {
@@ -174,7 +152,7 @@ export async function PATCH(req: Request) {
     if (mode === 'add-vehicle') {
       if (customer.vehicles.some((v: any) => v.plate === plate)) return NextResponse.json({ success: false, error: 'That vehicle is already linked to this customer.' }, { status: 409 });
       customer.vehicles.push({ plate, vehicleType, ...(vehicleType === 'motorcycle' ? {} : { vehicleSize }), visitCount: 0 } as any);
-      if (!isUnnamed(name)) {
+      if (name !== customer.name && !isUnnamed(name)) {
         customer.name = name;
         customer.normalizedName = normalizeName(name);
       }
@@ -186,10 +164,11 @@ export async function PATCH(req: Request) {
     const existing = customer.vehicles.find((v: any) => v.plate === targetPlate);
     if (!existing) return NextResponse.json({ success: false, error: 'The vehicle you are editing could not be found.' }, { status: 404 });
 
-    if (plate !== targetPlate) {
-      const sameCustomerPlate = customer.vehicles.some((v: any) => v !== existing && v.plate === plate);
-      if (sameCustomerPlate) return NextResponse.json({ success: false, error: 'That plate is already linked to this customer.' }, { status: 409 });
-    }
+    const duplicateInCustomer = customer.vehicles.some((v: any) => v !== existing && v.plate === plate);
+    if (duplicateInCustomer) return NextResponse.json({ success: false, error: 'That plate is already linked to this customer.' }, { status: 409 });
+
+    const oldPlates = customer.vehicles.map((v: any) => String(v.plate || '').toUpperCase()).filter(Boolean);
+    if (!oldPlates.includes(targetPlate)) oldPlates.push(targetPlate);
 
     const session = await mongoose.startSession();
     try {
@@ -201,11 +180,8 @@ export async function PATCH(req: Request) {
         customer.normalizedName = name ? normalizeName(name) : '';
         await customer.save({ session });
 
-        const plateFilter = targetPlate ? { plate: targetPlate } : null;
-        if (plateFilter) {
-          await Transaction.updateMany(plateFilter, { $set: { plate, customerName: name } }, { session });
-        } else if (name) {
-          await Transaction.updateMany({ customerName: { $regex: `^${escapeRegex(name)}$`, $options: 'i' } }, { $set: { customerName: name } }, { session });
+        if (oldPlates.length) {
+          await Transaction.updateMany({ plate: { $in: oldPlates } }, { $set: { customerName: name, ...(plate !== targetPlate ? { plate } : {}) } }, { session });
         }
       });
     } finally {
