@@ -28,8 +28,8 @@ export async function GET() {
       ]),
       Transaction.find({ status: { $ne: 'deleted' } }).sort({ createdAt: -1 }).limit(8).lean(),
       Transaction.aggregate([
-        { $match: { status: 'completed' } },
-        { $group: { _id: '$plate' } },
+        { $match: { status: 'completed', customerName: { $nin: ['', null, 'Walk-in Customer'] } } },
+        { $group: { _id: { $toLower: { $trim: { input: '$customerName' } } } } },
         { $count: 'count' },
       ]),
       Transaction.aggregate([
