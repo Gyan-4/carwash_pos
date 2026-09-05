@@ -7,6 +7,40 @@ import { AuditLog } from '@/models/AuditLog';
 import { InventoryItem } from '@/models/InventoryItem';
 import { InventoryMovement } from '@/models/InventoryMovement';
 
+function getServiceQuantities(services: Array<{ id: string }> = []) {
+  const quantities = new Map<string, number>();
+  for (const service of services) {
+    quantities.set(service.id, (quantities.get(service.id) || 0) + 1);
+  }
+  return quantities;
+}
+
+async function getInventoryDeductions(
+  serviceQuantities: Map<string, number>,
+  session: mongoose.ClientSession,
+) {
+  const serviceIds = [...serviceQuantities.keys()];
+  const items = await InventoryItem.find({
+    active: true,
+    'usage.serviceId': { $in: serviceIds },
+  }).session(session);
+
+  const deductions = new Map<string, { item: typeof items[number]; quantity: number }>();
+
+  for (const item of items) {
+    let required = 0;
+    for (const usage of item.usage || []) {
+      const count = serviceQuantities.get(usage.serviceId) || 0;
+      required += count * Number(usage.quantity || 0);
+    }
+    if (required > 0) {
+      deductions.set(String(item._id), { item, quantity: required });
+    }
+  }
+
+  return deductions;
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getAuthenticatedUser();
@@ -37,6 +71,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
         if (action === 'void') {
           if (previousStatus !== 'completed') throw new Error('ONLY_COMPLETED_CAN_VOID');
+
+          const serviceQuantities = getServiceQuantities(transaction.services || []);
+          const deductions = await getInventoryDeductions(serviceQuantities, session);
+
+          for (const { item, quantity } of deductions.values()) {
+            const before = Number(item.quantity);
+            const after = before + quantity;
+            item.quantity = after;
+            await item.save({ session });
+
+            await InventoryMovement.create([{
+              itemId: item._id,
+              itemName: item.name,
+              type: 'void',
+              quantity,
+              beforeQuantity: before,
+              afterQuantity: after,
+              transactionId: transaction._id,
+              transactionNo: transaction.transactionNo,
+              userId: user.id,
+              reason,
+            }], { session });
+          }
+
           transaction.status = 'voided';
           transaction.voidedBy = user.id;
           transaction.voidedAt = new Date();
@@ -45,30 +103,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         } else if (action === 'restore') {
           if (previousStatus !== 'voided') throw new Error('ONLY_VOIDED_CAN_RESTORE');
 
-          const serviceQuantities = new Map<string, number>();
-          for (const service of transaction.services || []) {
-            serviceQuantities.set(service.id, (serviceQuantities.get(service.id) || 0) + 1);
-          }
-          const serviceIds = [...serviceQuantities.keys()];
-          const items = await InventoryItem.find({ active: true, 'usage.serviceId': { $in: serviceIds } }).session(session);
-          const deductions = new Map<string, { item: typeof items[number]; quantity: number }>();
-
-          for (const item of items) {
-            let required = 0;
-            for (const usage of item.usage || []) {
-              const count = serviceQuantities.get(usage.serviceId) || 0;
-              required += count * Number(usage.quantity || 0);
-            }
-            if (required > 0) deductions.set(String(item._id), { item, quantity: required });
-          }
+          const serviceQuantities = getServiceQuantities(transaction.services || []);
+          const deductions = await getInventoryDeductions(serviceQuantities, session);
 
           for (const { item, quantity } of deductions.values()) {
-            if (Number(item.quantity) < quantity) throw new Error(`RESTORE_INVENTORY_SHORTAGE:${item.name}:${item.quantity}:${quantity}`);
+            if (Number(item.quantity) < quantity) {
+              throw new Error(`RESTORE_INVENTORY_SHORTAGE:${item.name}:${item.quantity}:${quantity}`);
+            }
           }
 
           for (const { item, quantity } of deductions.values()) {
             const before = Number(item.quantity);
-            item.quantity = before - quantity;
+            const after = before - quantity;
+            item.quantity = after;
             await item.save({ session });
             await InventoryMovement.create([{
               itemId: item._id,
@@ -76,7 +123,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               type: 'restore',
               quantity: -quantity,
               beforeQuantity: before,
-              afterQuantity: before - quantity,
+              afterQuantity: after,
               transactionId: transaction._id,
               transactionNo: transaction.transactionNo,
               userId: user.id,
