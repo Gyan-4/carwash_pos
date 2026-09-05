@@ -21,10 +21,7 @@ export async function GET(req: Request) {
     const q = new URL(req.url).searchParams.get('q')?.trim() || '';
     const regex = q ? new RegExp(escapeRegex(q), 'i') : null;
     const stored = await Customer.find().sort({ lastVisitAt: -1, name: 1 }).limit(1000).lean();
-    const transactions = await Transaction.find({
-      status: 'completed',
-      plate: { $nin: ['', null] },
-    }).sort({ createdAt: -1 }).limit(5000).lean();
+    const transactions = await Transaction.find({ status: 'completed', plate: { $nin: ['', null] } }).sort({ createdAt: -1 }).limit(5000).lean();
 
     type Vehicle = { plate: string; vehicleType: string; vehicleSize?: string; visitCount: number; lastVisitAt?: Date };
     type History = { transactionNo: string; plate: string; vehicleType: string; vehicleSize?: string; services: { name: string; price: number }[]; total: number; discount: number; paymentMethod?: string; createdAt: Date };
@@ -39,16 +36,7 @@ export async function GET(req: Request) {
         visitCount: 0,
         lastVisitAt: undefined,
       }));
-      result.set(String(c._id), {
-        _id: String(c._id),
-        name: c.name || '',
-        vehicles,
-        totalVisits: 0,
-        totalSpent: 0,
-        lastVisitAt: undefined,
-        lastService: undefined,
-        history: [],
-      });
+      result.set(String(c._id), { _id: String(c._id), name: c.name || '', vehicles, totalVisits: 0, totalSpent: 0, lastVisitAt: undefined, lastService: undefined, history: [] });
     }
 
     const byName = new Map<string, View>();
@@ -64,23 +52,11 @@ export async function GET(req: Request) {
       if (!plate) continue;
 
       let customer = byPlate.get(plate);
-
-      if (!customer && !isUnnamed(transactionName)) {
-        customer = byName.get(normalizeName(transactionName));
-      }
+      if (!customer && !isUnnamed(transactionName)) customer = byName.get(normalizeName(transactionName));
 
       if (!customer) {
         const key = `plate:${plate}`;
-        customer = result.get(key) || {
-          _id: key,
-          name: '',
-          vehicles: [],
-          totalVisits: 0,
-          totalSpent: 0,
-          lastVisitAt: undefined,
-          lastService: undefined,
-          history: [],
-        };
+        customer = result.get(key) || { _id: key, name: '', vehicles: [], totalVisits: 0, totalSpent: 0, lastVisitAt: undefined, lastService: undefined, history: [] };
         result.set(key, customer);
       }
 
@@ -91,13 +67,7 @@ export async function GET(req: Request) {
 
       let vehicle = customer.vehicles.find(v => v.plate === plate);
       if (!vehicle) {
-        vehicle = {
-          plate,
-          vehicleType: tx.vehicleType,
-          vehicleSize: tx.vehicleSize,
-          visitCount: 0,
-          lastVisitAt: undefined,
-        };
+        vehicle = { plate, vehicleType: tx.vehicleType, vehicleSize: tx.vehicleSize, visitCount: 0, lastVisitAt: undefined };
         customer.vehicles.push(vehicle);
       }
 
@@ -140,13 +110,7 @@ export async function GET(req: Request) {
         (a.name || a.vehicles[0]?.plate || '').localeCompare(b.name || b.vehicles[0]?.plate || '')
       );
 
-    const normalized = customers.map(c => ({
-      ...c,
-      name: c.name || c.vehicles[0]?.plate || 'Customer',
-      displayName: c.name || c.vehicles[0]?.plate || 'Customer',
-      named: Boolean(c.name),
-    }));
-
+    const normalized = customers.map(c => ({ ...c, name: c.name || c.vehicles[0]?.plate || 'Customer', displayName: c.name || c.vehicles[0]?.plate || 'Customer', named: Boolean(c.name) }));
     return NextResponse.json({ success: true, customers: normalized });
   } catch (error) {
     console.error('[Customers API] GET failed:', error);
@@ -173,13 +137,7 @@ export async function POST(req: Request) {
     await connectToDatabase();
     if (await Customer.findOne({ 'vehicles.plate': plate })) return NextResponse.json({ success: false, error: 'That plate is already registered.' }, { status: 409 });
 
-    const customer = await Customer.create({
-      name,
-      normalizedName: name ? normalizeName(name) : '',
-      vehicles: [{ plate, vehicleType, ...(vehicleType === 'motorcycle' ? {} : { vehicleSize }), visitCount: 0 }],
-      totalVisits: 0,
-    });
-
+    const customer = await Customer.create({ name, normalizedName: name ? normalizeName(name) : '', vehicles: [{ plate, vehicleType, ...(vehicleType === 'motorcycle' ? {} : { vehicleSize }), visitCount: 0 }], totalVisits: 0 });
     return NextResponse.json({ success: true, customer }, { status: 201 });
   } catch (error) {
     console.error('[Customers API] POST failed:', error);
@@ -194,6 +152,8 @@ export async function PATCH(req: Request) {
 
     const body = await req.json();
     const customerId = String(body.customerId || '');
+    const originalPlate = String(body.originalPlate || '').trim().toUpperCase();
+    const mode = body.mode === 'add-vehicle' ? 'add-vehicle' : 'edit-vehicle';
     const name = String(body.name || '').trim();
     const vehicle = body.vehicle || {};
     const plate = String(vehicle.plate || '').trim().toUpperCase();
@@ -205,33 +165,53 @@ export async function PATCH(req: Request) {
     if (vehicleType === 'motorcycle' && vehicleSize) return NextResponse.json({ success: false, error: 'Motorcycles must not have a vehicle size.' }, { status: 400 });
 
     await connectToDatabase();
-    let customer = mongoose.isValidObjectId(customerId) ? await Customer.findById(customerId) : null;
-
-    if (!customer) {
-      if (await Customer.findOne({ 'vehicles.plate': plate })) return NextResponse.json({ success: false, error: 'That plate is already registered.' }, { status: 409 });
-      customer = await Customer.create({
-        name,
-        normalizedName: name ? normalizeName(name) : '',
-        vehicles: [{ plate, vehicleType, ...(vehicleType === 'motorcycle' ? {} : { vehicleSize }) }],
-        totalVisits: 0,
-      });
-      return NextResponse.json({ success: true, customer });
-    }
+    const customer = mongoose.isValidObjectId(customerId) ? await Customer.findById(customerId) : null;
+    if (!customer) return NextResponse.json({ success: false, error: 'Customer record not found.' }, { status: 404 });
 
     const duplicate = await Customer.findOne({ _id: { $ne: customer._id }, 'vehicles.plate': plate });
     if (duplicate) return NextResponse.json({ success: false, error: 'That plate is already linked to another customer.' }, { status: 409 });
 
-    customer.name = name;
-    customer.normalizedName = name ? normalizeName(name) : '';
-    const existing = customer.vehicles.find((v: any) => v.plate === plate);
-    if (existing) {
-      existing.vehicleType = vehicleType;
-      existing.vehicleSize = vehicleType === 'motorcycle' ? undefined : vehicleSize;
-    } else {
-      customer.vehicles.push({ plate, vehicleType, ...(vehicleType === 'motorcycle' ? {} : { vehicleSize }) } as any);
+    if (mode === 'add-vehicle') {
+      if (customer.vehicles.some((v: any) => v.plate === plate)) return NextResponse.json({ success: false, error: 'That vehicle is already linked to this customer.' }, { status: 409 });
+      customer.vehicles.push({ plate, vehicleType, ...(vehicleType === 'motorcycle' ? {} : { vehicleSize }), visitCount: 0 } as any);
+      if (!isUnnamed(name)) {
+        customer.name = name;
+        customer.normalizedName = normalizeName(name);
+      }
+      await customer.save();
+      return NextResponse.json({ success: true, customer });
     }
 
-    await customer.save();
+    const targetPlate = originalPlate || String(customer.vehicles[0]?.plate || '').toUpperCase();
+    const existing = customer.vehicles.find((v: any) => v.plate === targetPlate);
+    if (!existing) return NextResponse.json({ success: false, error: 'The vehicle you are editing could not be found.' }, { status: 404 });
+
+    if (plate !== targetPlate) {
+      const sameCustomerPlate = customer.vehicles.some((v: any) => v !== existing && v.plate === plate);
+      if (sameCustomerPlate) return NextResponse.json({ success: false, error: 'That plate is already linked to this customer.' }, { status: 409 });
+    }
+
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        existing.plate = plate;
+        existing.vehicleType = vehicleType;
+        existing.vehicleSize = vehicleType === 'motorcycle' ? undefined : vehicleSize;
+        customer.name = name;
+        customer.normalizedName = name ? normalizeName(name) : '';
+        await customer.save({ session });
+
+        const plateFilter = targetPlate ? { plate: targetPlate } : null;
+        if (plateFilter) {
+          await Transaction.updateMany(plateFilter, { $set: { plate, customerName: name } }, { session });
+        } else if (name) {
+          await Transaction.updateMany({ customerName: { $regex: `^${escapeRegex(name)}$`, $options: 'i' } }, { $set: { customerName: name } }, { session });
+        }
+      });
+    } finally {
+      await session.endSession();
+    }
+
     return NextResponse.json({ success: true, customer });
   } catch (error) {
     console.error('[Customers API] PATCH failed:', error);
