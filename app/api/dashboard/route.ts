@@ -16,7 +16,7 @@ export async function GET() {
     const startOfWeek = new Date(startOfDay);
     startOfWeek.setDate(startOfWeek.getDate() - 6);
 
-    const [today, week, recent, uniqueCustomers, serviceMix] = await Promise.all([
+    const [today, week, recent, uniqueCustomers, serviceMix, paymentMix, vehicleMix] = await Promise.all([
       Transaction.aggregate([
         { $match: { status: 'completed', createdAt: { $gte: startOfDay } } },
         { $group: { _id: null, sales: { $sum: '$total' }, vehicles: { $sum: 1 } } },
@@ -36,13 +36,30 @@ export async function GET() {
         { $match: { status: 'completed' } },
         { $unwind: '$services' },
         { $group: { _id: '$services.name', count: { $sum: 1 }, sales: { $sum: '$services.price' } } },
-        // Deterministic tie-breaker: equal counts are ordered by service name.
         { $sort: { count: -1, _id: 1 } },
         { $limit: 8 },
+      ]),
+      Transaction.aggregate([
+        { $match: { status: 'completed', createdAt: { $gte: startOfWeek } } },
+        { $group: { _id: '$paymentMethod', count: { $sum: 1 }, sales: { $sum: '$total' } } },
+        { $sort: { sales: -1, _id: 1 } },
+      ]),
+      Transaction.aggregate([
+        { $match: { status: 'completed', createdAt: { $gte: startOfWeek } } },
+        { $group: { _id: '$vehicleType', count: { $sum: 1 }, sales: { $sum: '$total' } } },
+        { $sort: { count: -1, _id: 1 } },
       ]),
     ]);
 
     const todayData = today[0] || { sales: 0, vehicles: 0 };
+    const weeklySales = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(startOfWeek);
+      date.setDate(startOfWeek.getDate() + index);
+      const key = date.toISOString().slice(0, 10);
+      const found = week.find((item) => item._id === key);
+      return { date: key, sales: Number(found?.sales || 0), vehicles: Number(found?.vehicles || 0) };
+    });
+
     return NextResponse.json({
       success: true,
       overview: {
@@ -50,7 +67,7 @@ export async function GET() {
         vehicles: Number(todayData.vehicles || 0),
         customers: Number(uniqueCustomers[0]?.count || 0),
       },
-      weeklySales: week.map((item) => ({ date: item._id, sales: Number(item.sales || 0), vehicles: Number(item.vehicles || 0) })),
+      weeklySales,
       recent: recent.map((tx) => ({
         transactionNo: tx.transactionNo,
         plate: tx.plate,
@@ -59,7 +76,9 @@ export async function GET() {
         status: tx.status,
         createdAt: tx.createdAt,
       })),
-      serviceMix: serviceMix.map((item) => ({ name: item._id, count: item.count, sales: Number(item.sales || 0) })),
+      serviceMix: serviceMix.map((item) => ({ name: item._id, count: Number(item.count || 0), sales: Number(item.sales || 0) })),
+      paymentMix: paymentMix.map((item) => ({ name: item._id, count: Number(item.count || 0), sales: Number(item.sales || 0) })),
+      vehicleMix: vehicleMix.map((item) => ({ name: item._id, count: Number(item.count || 0), sales: Number(item.sales || 0) })),
     });
   } catch {
     return NextResponse.json({ success: false, error: 'Unable to load dashboard data.' }, { status: 500 });
