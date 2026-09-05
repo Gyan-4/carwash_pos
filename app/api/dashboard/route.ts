@@ -69,18 +69,28 @@ export async function GET() {
       },
       weeklySales,
       recent: recent.map((tx) => ({
-        transactionNo: tx.transactionNo,
-        plate: tx.plate,
-        vehicleType: tx.vehicleType,
+        transactionNo: String(tx.transactionNo || ''),
+        plate: String(tx.plate || ''),
+        vehicleType: String(tx.vehicleType || ''),
         total: Number(tx.total || 0),
-        status: tx.status,
-        createdAt: tx.createdAt,
+        status: String(tx.status || ''),
+        createdAt: tx.createdAt instanceof Date ? tx.createdAt.toISOString() : String(tx.createdAt || ''),
       })),
-      serviceMix: serviceMix.map((item) => ({ name: item._id, count: Number(item.count || 0), sales: Number(item.sales || 0) })),
-      paymentMix: paymentMix.map((item) => ({ name: item._id, count: Number(item.count || 0), sales: Number(item.sales || 0) })),
-      vehicleMix: vehicleMix.map((item) => ({ name: item._id, count: Number(item.count || 0), sales: Number(item.sales || 0) })),
+      serviceMix: serviceMix.map((item) => ({ name: String(item._id || 'Unknown'), count: Number(item.count || 0), sales: Number(item.sales || 0) })),
+      paymentMix: paymentMix.map((item) => ({ name: String(item._id || 'Unknown'), count: Number(item.count || 0), sales: Number(item.sales || 0) })),
+      vehicleMix: vehicleMix.map((item) => ({ name: String(item._id || 'Unknown'), count: Number(item.count || 0), sales: Number(item.sales || 0) })),
     });
-  } catch {
-    return NextResponse.json({ success: false, error: 'Unable to load dashboard data.' }, { status: 500 });
+  } catch (error) {
+    console.error('[Dashboard API] Failed to load dashboard:', error);
+    const details = error instanceof Error ? error.message : 'Unknown dashboard error';
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Unable to load dashboard data.',
+        code: 'DASHBOARD_LOAD_FAILED',
+        details: process.env.NODE_ENV === 'development' ? details : undefined,
+      },
+      { status: 500 },
+    );
   }
 }
