@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "preflight": "node scripts/preflight.mjs",
+    "production:check": "node scripts/production-check.mjs",
     "check": "pnpm lint && pnpm preflight",
+    "verify:production": "pnpm lint && pnpm build && pnpm production:check",
     "seed:auth": "node --env-file=.env.local scripts/seed-auth.mjs"
   },
   "dependencies": {
