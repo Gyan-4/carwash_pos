@@ -40,6 +40,46 @@ function MainLayout({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [loading, user, pathname, router]);
 
+  useEffect(() => {
+    if (loading || !user) return;
+
+    let cleanup: (() => void) | undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const main = document.querySelector('main');
+      if (!main) return;
+
+      const heading = main.querySelector('h1');
+      if (!heading) return;
+
+      let candidate = heading.closest('header') as HTMLElement | null;
+
+      if (!candidate) {
+        let node = heading.parentElement as HTMLElement | null;
+        while (node && node !== main) {
+          const classes = typeof node.className === 'string' ? node.className : '';
+          const rect = node.getBoundingClientRect();
+          const looksLikeCard = classes.includes('rounded-2xl') && (classes.includes('bg-white') || classes.includes('border'));
+          if (looksLikeCard && rect.height <= 230 && rect.width >= main.clientWidth * 0.5) {
+            candidate = node;
+            break;
+          }
+          node = node.parentElement as HTMLElement | null;
+        }
+      }
+
+      if (!candidate) return;
+
+      const previousClassName = candidate.className;
+      candidate.classList.add('sticky', 'top-0', 'z-30', 'bg-slate-50/95', 'backdrop-blur-md');
+      cleanup = () => { candidate!.className = previousClassName; };
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      cleanup?.();
+    };
+  }, [loading, user, pathname]);
+
   if (loading) return <div className="w-screen h-screen bg-slate-900" />;
   if (!user) return <LoginScreen />;
 
