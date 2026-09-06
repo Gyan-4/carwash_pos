@@ -43,8 +43,21 @@ export default function LoginScreen() {
       });
       const data = await response.json();
       if (!response.ok || !data.success) { setError(data.error || 'Invalid credentials.'); return; }
-      login(data.user.name, data.user.role);
-      router.replace(data.user.role === 'manager' ? '/dashboard' : '/');
+
+      login(data.user.name, data.user.role, data.user.id);
+
+      if (data.user.role === 'manager') {
+        router.replace('/dashboard');
+        return;
+      }
+
+      try {
+        const shiftResponse = await fetch('/api/shifts', { cache: 'no-store' });
+        const shiftData = await shiftResponse.json().catch(() => ({}));
+        router.replace(shiftResponse.ok && shiftData.active ? '/' : '/shift');
+      } catch {
+        router.replace('/shift');
+      }
     } catch { setError('Unable to connect to the server.'); }
     finally { setLoading(false); }
   };
@@ -76,7 +89,7 @@ export default function LoginScreen() {
             <div className="relative"><Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" /><input type="password" inputMode="numeric" placeholder="••••" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-9 pr-4 text-sm font-mono tracking-widest text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
             {error && <p className="text-xs font-medium text-red-600">{error}</p>}
           </div>
-          <button disabled={loading} type="submit" className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl text-xs transition shadow-md shadow-blue-600/20">{loading ? 'Signing in...' : `Start Shift (${selectedRole === 'manager' ? 'Owner / Manager' : 'Cashier'})`}</button>
+          <button disabled={loading} type="submit" className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl text-xs transition shadow-md shadow-blue-600/20">{loading ? 'Signing in...' : `Continue as ${selectedRole === 'manager' ? 'Manager' : 'Cashier'}`}</button>
         </form>
       </div>
     </div>
