@@ -5,6 +5,8 @@ const UserSchema = new Schema({
   role: { type: String, enum: ['cashier', 'manager'], required: true },
   pinHash: { type: String, required: true },
   active: { type: Boolean, default: true },
+  failedPinAttempts: { type: Number, default: 0 },
+  lockedUntil: { type: Date, default: null },
 }, { timestamps: true });
 
 const SessionSchema = new Schema({
