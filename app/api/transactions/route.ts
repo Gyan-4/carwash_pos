@@ -92,7 +92,9 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
     const shift = await Shift.findOne({ cashierId: user.id, status: 'open' }).sort({ openedAt: -1 });
-    if (!shift) return NextResponse.json({ success: false, error: 'No open cashier shift. Open a shift before processing a sale.' }, { status: 409 });
+    if (!shift && user.role !== 'manager') {
+      return NextResponse.json({ success: false, error: 'No open cashier shift. Open a shift before processing a sale.' }, { status: 409 });
+    }
 
     const settings = await SystemSetting.findOne({ key: 'default' }).lean();
     const enabledPaymentMethods = settings?.paymentMethods || { cash: true, gcash: true, card: true };
@@ -160,7 +162,7 @@ export async function POST(req: Request) {
           paymentMethod,
           amountPaid,
           change,
-          shiftId: shift._id,
+          shiftId: shift?._id,
           createdBy: user.id,
           status: 'completed',
         }], { session });
@@ -210,18 +212,8 @@ export async function POST(req: Request) {
           action: 'SALE_COMPLETED',
           transactionId: transaction._id,
           transactionNo,
-          reason: 'POS sale completed',
-          metadata: {
-            total,
-            discount,
-            paymentMethod,
-            plate,
-            vehicleType,
-            vehicleSize,
-            serviceIds,
-            promoName: promoName || undefined,
-            shiftId: shift._id,
-          },
+          reason: user.role === 'manager' && !shift ? 'Manager completed POS sale without cashier shift' : 'POS sale completed',
+          metadata: { total, discount, paymentMethod, plate, vehicleType, vehicleSize, serviceIds, promoName: promoName || undefined, shiftId: shift?._id },
         }], { session });
       });
       return NextResponse.json({ success: true, transaction, pricing: { subtotal, discount, total, change } }, { status: 201 });
