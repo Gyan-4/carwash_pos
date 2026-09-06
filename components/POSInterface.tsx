@@ -8,9 +8,11 @@ type CustomerVehicle = { plate: string; vehicleType: string; vehicleSize?: strin
 type CustomerMatch = { _id: string; name: string; vehicles: CustomerVehicle[]; totalVisits: number };
 type PaymentMethod = 'cash' | 'gcash' | 'card';
 type Promo = { _id: string; name: string; description?: string; discountType: 'percentage' | 'fixed'; discountValue: number; eligibleVehicleTypes?: string[]; eligibleVehicleSizes?: string[]; eligiblePlatforms?: string[]; requiresVerification?: boolean; active: boolean };
-type ReceiptData = { transactionNo: string; customerName: string; plate: string; vehicleType: string; vehicleSize?: string; services: { name: string; price: number }[]; subtotal: number; discount: number; total: number; paymentMethod: PaymentMethod; amountPaid: number; change: number; promoName?: string; createdAt: string };
+type ReceiptSettings = { storeName: string; address: string; contactNumber: string; receiptFooter: string };
+type ReceiptData = { transactionNo: string; customerName: string; plate: string; vehicleType: string; vehicleSize?: string; services: { name: string; price: number }[]; subtotal: number; discount: number; total: number; paymentMethod: PaymentMethod; amountPaid: number; change: number; promoName?: string; createdAt: string; settings: ReceiptSettings };
 
 const RIDER_PLATFORMS = ['Grab', 'Foodpanda', 'JoyRide', 'Maxim', 'inDrive', 'SPX Express', 'J&T Express'];
+const DEFAULT_RECEIPT_SETTINGS: ReceiptSettings = { storeName: 'Car Wash POS', address: '', contactNumber: '', receiptFooter: 'Thank you for choosing us!' };
 
 export default function POSInterface() {
   const [vehicleType, setVehicleType] = useState<VehicleType>('sedan');
@@ -27,6 +29,7 @@ export default function POSInterface() {
   const [promoVerification, setPromoVerification] = useState(false);
   const [loadingPromos, setLoadingPromos] = useState(false);
   const [promoLoadError, setPromoLoadError] = useState('');
+  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>(DEFAULT_RECEIPT_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -55,8 +58,20 @@ export default function POSInterface() {
     }
   };
 
+  const loadReceiptSettings = async () => {
+    try {
+      const response = await fetch('/api/settings/public', { cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) return;
+      setReceiptSettings({ ...DEFAULT_RECEIPT_SETTINGS, ...(data.settings || {}) });
+    } catch {
+      setReceiptSettings(DEFAULT_RECEIPT_SETTINGS);
+    }
+  };
+
   useEffect(() => {
     loadPromos();
+    loadReceiptSettings();
   }, []);
 
   useEffect(() => {
@@ -233,7 +248,7 @@ export default function POSInterface() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Unable to save transaction.');
       const saved = data.transaction;
-      setReceipt({ transactionNo: saved.transactionNo, customerName: customerName.trim() || 'Walk-in Customer', plate: String(plate).trim().toUpperCase(), vehicleType, vehicleSize: vehicleType === 'motorcycle' ? undefined : vehicleSize, services: selectedServices.map((service) => ({ name: service.name, price: getPrice(service, vehicleType, vehicleSize) })), subtotal, discount, total, paymentMethod, amountPaid: paidNumber, change, promoName: selectedPromo?.name, createdAt: saved.createdAt || new Date().toISOString() });
+      setReceipt({ transactionNo: saved.transactionNo, customerName: customerName.trim() || 'Walk-in Customer', plate: String(plate).trim().toUpperCase(), vehicleType, vehicleSize: vehicleType === 'motorcycle' ? undefined : vehicleSize, services: selectedServices.map((service) => ({ name: service.name, price: getPrice(service, vehicleType, vehicleSize) })), subtotal, discount, total, paymentMethod, amountPaid: paidNumber, change, promoName: selectedPromo?.name, createdAt: saved.createdAt || new Date().toISOString(), settings: receiptSettings });
       setPaymentOpen(false); setPlate(''); setCustomerName(''); setCustomerMatch(null); setSelectedServices([]); setSelectedPromo(null); setRiderPlatform(''); setPromoVerification(false); setAmountPaid('');
       setMessage(`Transaction ${saved.transactionNo} completed.`);
     } catch (error) {
@@ -241,10 +256,13 @@ export default function POSInterface() {
     } finally { setSaving(false); }
   }
 
+  const escapeHtml = (value: string) => value.replace(/[&<>\"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[char] || char));
+
   const printReceipt = () => {
     if (!receipt) return;
-    const rows = receipt.services.map((service) => `<tr><td>${service.name}</td><td style="text-align:right">₱${service.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td></tr>`).join('');
-    const html = `<!doctype html><html><head><title>${receipt.transactionNo}</title><style>body{font-family:Arial;width:300px;margin:20px auto;font-size:12px}table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px dashed #ddd}.total{font-size:16px;font-weight:800}</style></head><body><h2 style="text-align:center">CARWASH RECEIPT</h2><p style="text-align:center">${receipt.transactionNo}</p><p>Customer: ${receipt.customerName}</p><p>Plate: <b>${receipt.plate}</b></p><p>Vehicle: ${receipt.vehicleType}${receipt.vehicleSize ? ` • ${receipt.vehicleSize}` : ''}</p><table>${rows}</table><p>Subtotal: <span style="float:right">₱${receipt.subtotal.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p>${receipt.promoName ? `<p>Promo: <span style="float:right">${receipt.promoName}</span></p>` : ''}<p>Discount: <span style="float:right">₱${receipt.discount.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p><p class="total">TOTAL <span style="float:right">₱${receipt.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p><p>Payment: <span style="float:right">${receipt.paymentMethod.toUpperCase()}</span></p><p>Paid: <span style="float:right">₱${receipt.amountPaid.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p><p>Change: <span style="float:right">₱${receipt.change.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p><script>window.onload=()=>window.print();</script></body></html>`;
+    const rows = receipt.services.map((service) => `<tr><td>${escapeHtml(service.name)}</td><td style="text-align:right">₱${service.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td></tr>`).join('');
+    const settings = receipt.settings;
+    const html = `<!doctype html><html><head><title>${escapeHtml(receipt.transactionNo)}</title><style>body{font-family:Arial,sans-serif;width:300px;margin:20px auto;font-size:12px;color:#111}.center{text-align:center}.store{font-size:17px;font-weight:800;line-height:1.25;margin-bottom:4px}.muted{color:#555}.line{border-top:1px dashed #aaa;margin:10px 0}table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}.total{font-size:16px;font-weight:800;border-top:1px solid #111;padding-top:7px}.footer{white-space:pre-wrap;margin-top:14px;color:#555;text-align:center;font-size:11px}</style></head><body><div class="center"><div class="store">${escapeHtml(settings.storeName)}</div>${settings.address ? `<div class="muted">${escapeHtml(settings.address)}</div>` : ''}${settings.contactNumber ? `<div class="muted">${escapeHtml(settings.contactNumber)}</div>` : ''}</div><div class="line"></div><div class="center"><b>CARWASH RECEIPT</b><div class="muted">${escapeHtml(receipt.transactionNo)}</div></div><p>Customer: ${escapeHtml(receipt.customerName)}</p><p>Plate: <b>${escapeHtml(receipt.plate)}</b></p><p>Vehicle: ${escapeHtml(receipt.vehicleType)}${receipt.vehicleSize ? ` • ${escapeHtml(receipt.vehicleSize)}` : ''}</p><table>${rows}</table><p>Subtotal: <span style="float:right">₱${receipt.subtotal.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p>${receipt.promoName ? `<p>Promo: <span style="float:right">${escapeHtml(receipt.promoName)}</span></p>` : ''}<p>Discount: <span style="float:right">₱${receipt.discount.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p><p class="total">TOTAL <span style="float:right">₱${receipt.total.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p><p>Payment: <span style="float:right">${escapeHtml(receipt.paymentMethod.toUpperCase())}</span></p><p>Paid: <span style="float:right">₱${receipt.amountPaid.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p><p>Change: <span style="float:right">₱${receipt.change.toLocaleString('en-PH',{minimumFractionDigits:2})}</span></p>${settings.receiptFooter ? `<div class="line"></div><div class="footer">${escapeHtml(settings.receiptFooter)}</div>` : ''}<script>window.onload=()=>window.print();</script></body></html>`;
     const win = window.open('', '_blank', 'width=420,height=700');
     if (!win) { setMessage('Please allow pop-ups to print the receipt.'); return; }
     win.document.write(html); win.document.close();
