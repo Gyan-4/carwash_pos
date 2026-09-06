@@ -17,7 +17,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-100">
       <Sidebar />
-      <main className="flex-1 h-full overflow-hidden bg-slate-100">{children}</main>
+      <main className="min-w-0 min-h-0 flex-1 h-full overflow-y-auto overflow-x-hidden overscroll-contain bg-slate-100">
+        {children}
+      </main>
     </div>
   );
 }
