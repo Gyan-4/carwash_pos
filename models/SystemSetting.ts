@@ -6,7 +6,6 @@ const SystemSettingSchema = new Schema({
   address: { type: String, default: '' },
   contactNumber: { type: String, default: '' },
   receiptFooter: { type: String, default: 'Thank you for choosing us!' },
-  stampsRequired: { type: Number, default: 11, min: 1 },
   riderDiscountPercent: { type: Number, default: 20, min: 0, max: 100 },
   paymentMethods: {
     cash: { type: Boolean, default: true },
