@@ -10,8 +10,15 @@ type Transaction = {
   status: 'completed' | 'voided' | 'deleted'; createdAt: string;
 };
 type AuditLog = { _id:string; userName:string; role:string; action:string; transactionNo?:string; reason:string; previousStatus?:string; newStatus?:string; createdAt:string };
+type PublicSettings = { storeName: string; address: string; contactNumber: string; receiptFooter: string };
 
 const money = (value: number) => `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+const defaultPublicSettings: PublicSettings = {
+  storeName: 'Car Wash POS',
+  address: '',
+  contactNumber: '',
+  receiptFooter: 'Thank you for choosing us!',
+};
 
 export default function HistoryPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -48,12 +55,38 @@ export default function HistoryPage() {
     });
   }, [transactions, query, status, payment]);
 
-  const printReceipt = (tx: Transaction) => {
-    const rows = (tx.services || []).map(s => `<tr><td>${escapeHtml(s.name)}</td><td class="right">${money(s.price)}</td></tr>`).join('');
-    const html = `<!doctype html><html><head><title>${escapeHtml(tx.transactionNo)}</title><style>body{font-family:Arial,sans-serif;width:300px;margin:20px auto;color:#111;font-size:12px}h2{text-align:center;margin:0 0 4px}.center{text-align:center}.muted{color:#666}table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:4px 0;border-bottom:1px dashed #ddd}.right{text-align:right}.total{font-size:16px;font-weight:800;border-top:1px solid #111;padding-top:8px}</style></head><body><h2>CARWASH RECEIPT</h2><p class="center">${escapeHtml(tx.transactionNo)}</p><p class="muted">${new Date(tx.createdAt).toLocaleString('en-PH')}</p><p>Customer: ${escapeHtml(tx.customerName || 'Walk-in Customer')}</p><p>Plate: <b>${escapeHtml(tx.plate)}</b></p><p>Vehicle: ${escapeHtml(tx.vehicleType)}${tx.vehicleSize ? ` • ${escapeHtml(tx.vehicleSize)}` : ''}</p><table>${rows}</table><p>Subtotal: <span class="right">${money(tx.subtotal)}</span></p><p>Discount: <span class="right">${money(tx.discount)}</span></p><p class="total">TOTAL <span class="right">${money(tx.total)}</span></p><p>Payment: <span class="right">${escapeHtml((tx.paymentMethod || 'cash').toUpperCase())}</span></p><p>Paid: <span class="right">${money(tx.amountPaid || 0)}</span></p><p>Change: <span class="right">${money(tx.change || 0)}</span></p><p class="center" style="margin-top:20px">Thank you!</p><script>window.onload=()=>window.print()</script></body></html>`;
+  const printReceipt = async (tx: Transaction) => {
     const win = window.open('', '_blank', 'width=420,height=700');
     if (!win) { setError('Please allow pop-ups to print receipts.'); return; }
-    win.document.write(html); win.document.close();
+
+    win.document.write('<p style="font-family:Arial,sans-serif;padding:20px">Preparing receipt...</p>');
+
+    let settings = defaultPublicSettings;
+    try {
+      const settingsRes = await fetch('/api/settings/public', { cache: 'no-store' });
+      const settingsData = await settingsRes.json().catch(() => ({}));
+      if (settingsRes.ok && settingsData.success !== false && settingsData.settings) {
+        settings = {
+          storeName: String(settingsData.settings.storeName || defaultPublicSettings.storeName),
+          address: String(settingsData.settings.address || ''),
+          contactNumber: String(settingsData.settings.contactNumber || ''),
+          receiptFooter: String(settingsData.settings.receiptFooter || defaultPublicSettings.receiptFooter),
+        };
+      }
+    } catch {
+      // Keep printing using safe defaults if the public settings endpoint is unavailable.
+    }
+
+    const rows = (tx.services || []).map(s => `<tr><td>${escapeHtml(s.name)}</td><td class="right">${money(s.price)}</td></tr>`).join('');
+    const storeHeader = [settings.storeName, settings.address, settings.contactNumber]
+      .filter(Boolean)
+      .map(escapeHtml)
+      .join('<br>');
+    const footer = escapeHtml(settings.receiptFooter).replace(/\r?\n/g, '<br>');
+    const html = `<!doctype html><html><head><title>${escapeHtml(tx.transactionNo)}</title><style>body{font-family:Arial,sans-serif;width:300px;margin:20px auto;color:#111;font-size:12px}h2{text-align:center;margin:0 0 4px}.center{text-align:center}.muted{color:#666}table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:4px 0;border-bottom:1px dashed #ddd}.right{text-align:right}.total{font-size:16px;font-weight:800;border-top:1px solid #111;padding-top:8px}.store{font-weight:800;font-size:14px;line-height:1.35}.contact{margin-top:4px;line-height:1.35}.footer{margin-top:20px;line-height:1.4}</style></head><body>${storeHeader ? `<div class="center store">${storeHeader}</div>` : ''}<h2>CARWASH RECEIPT</h2><p class="center">${escapeHtml(tx.transactionNo)}</p><p class="muted">${new Date(tx.createdAt).toLocaleString('en-PH')}</p><p>Customer: ${escapeHtml(tx.customerName || 'Walk-in Customer')}</p><p>Plate: <b>${escapeHtml(tx.plate)}</b></p><p>Vehicle: ${escapeHtml(tx.vehicleType)}${tx.vehicleSize ? ` • ${escapeHtml(tx.vehicleSize)}` : ''}</p><table>${rows}</table><p>Subtotal: <span class="right">${money(tx.subtotal)}</span></p><p>Discount: <span class="right">${money(tx.discount)}</span></p><p class="total">TOTAL <span class="right">${money(tx.total)}</span></p><p>Payment: <span class="right">${escapeHtml((tx.paymentMethod || 'cash').toUpperCase())}</span></p><p>Paid: <span class="right">${money(tx.amountPaid || 0)}</span></p><p>Change: <span class="right">${money(tx.change || 0)}</span></p><p class="center footer">${footer}</p><script>window.onload=()=>window.print()</script></body></html>`;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
   };
 
   async function action(id: string, actionName: 'void'|'restore'|'delete') {
