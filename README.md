@@ -49,6 +49,22 @@ pnpm dev
 
 Open `http://localhost:3000`.
 
+### Validate the environment
+
+Run the preflight check before testing or deploying:
+
+```bash
+pnpm preflight
+```
+
+For a general project check:
+
+```bash
+pnpm check
+```
+
+The preflight check verifies that required environment variables exist, PINs are exactly 4 digits, and placeholder/default values are not being used.
+
 ### Seed initial accounts
 
 With `.env.local` configured:
@@ -64,10 +80,11 @@ The seed script creates or updates the initial cashier and manager accounts from
 The application can be deployed to Vercel with MongoDB Atlas.
 
 1. Import the repository into Vercel.
-2. Configure the production environment variable `MONGODB_URI`.
-3. Configure strong `CASHIER_PIN` and `MANAGER_PIN` values for initial account setup.
+2. Configure the production environment variable `MONGODB_URI` in the correct Vercel environment.
+3. Use strong client-specific credentials for the initial cashier and manager setup.
 4. Make sure the MongoDB Atlas network access rules allow the deployment environment to connect.
-5. Deploy and verify the application through the health endpoint:
+5. Run `pnpm check` locally against the final deployment configuration where practical.
+6. Deploy and verify the application through the health endpoint:
 
 ```text
 /api/health
@@ -87,6 +104,7 @@ Before handing the system to a client:
 - Test queue status changes and inventory deduction.
 - Test transaction void/restore and audit logging with a manager account.
 - Configure MongoDB Atlas backups and confirm a recovery procedure.
+- Run the production environment preflight and fix any configuration errors before handover.
 - Test the production deployment from the actual cashier device, receipt printer, and network.
 - Keep a copy of the final production configuration and deployment notes for support.
 
