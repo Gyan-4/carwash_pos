@@ -30,19 +30,17 @@ export async function PATCH(req: Request) {
     const address = String(body.address || '').trim();
     const contactNumber = String(body.contactNumber || '').trim();
     const receiptFooter = String(body.receiptFooter || '').trim();
-    const stampsRequired = Number(body.stampsRequired);
     const riderDiscountPercent = Number(body.riderDiscountPercent);
     const paymentMethods = body.paymentMethods || {};
     if (!storeName || storeName.length > 120) return NextResponse.json({ error: 'Store name is required.' }, { status: 400 });
-    if (!Number.isInteger(stampsRequired) || stampsRequired < 1 || stampsRequired > 999) return NextResponse.json({ error: 'Stamps required must be a whole number from 1 to 999.' }, { status: 400 });
     if (!Number.isFinite(riderDiscountPercent) || riderDiscountPercent < 0 || riderDiscountPercent > 100) return NextResponse.json({ error: 'Rider discount must be between 0 and 100%.' }, { status: 400 });
     if (paymentMethods.cash !== true && paymentMethods.gcash !== true && paymentMethods.card !== true) return NextResponse.json({ error: 'At least one payment method must remain enabled.' }, { status: 400 });
     await connectToDatabase();
     const settings = await SystemSetting.findOneAndUpdate({ key: KEY }, {
-      $set: { storeName, address, contactNumber, receiptFooter, stampsRequired, riderDiscountPercent, paymentMethods: { cash: paymentMethods.cash === true, gcash: paymentMethods.gcash === true, card: paymentMethods.card === true }, updatedBy: user.id },
+      $set: { storeName, address, contactNumber, receiptFooter, riderDiscountPercent, paymentMethods: { cash: paymentMethods.cash === true, gcash: paymentMethods.gcash === true, card: paymentMethods.card === true }, updatedBy: user.id },
       $setOnInsert: { key: KEY },
     }, { new: true, upsert: true });
-    await AuditLog.create({ userId: user.id, userName: user.name, role: user.role, action: 'SETTINGS_UPDATED', reason: 'Updated system configuration', metadata: { storeName, paymentMethods: settings.paymentMethods, stampsRequired, riderDiscountPercent } });
+    await AuditLog.create({ userId: user.id, userName: user.name, role: user.role, action: 'SETTINGS_UPDATED', reason: 'Updated system configuration', metadata: { storeName, paymentMethods: settings.paymentMethods, riderDiscountPercent } });
     return NextResponse.json({ success: true, settings });
   } catch (error) {
     console.error('PATCH /api/settings failed:', error);
