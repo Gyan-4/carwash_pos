@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Save, CreditCard, Award, Trash2, ShieldAlert, Database, Store, ReceiptText } from 'lucide-react';
+import { Save, CreditCard, Trash2, ShieldAlert, Database, Store, ReceiptText, Truck } from 'lucide-react';
 
-type Settings = { storeName: string; address: string; contactNumber: string; receiptFooter: string; stampsRequired: number; riderDiscountPercent: number; paymentMethods: { cash: boolean; gcash: boolean; card: boolean } };
-const defaults: Settings = { storeName: 'Car Wash POS', address: '', contactNumber: '', receiptFooter: 'Thank you for choosing us!', stampsRequired: 11, riderDiscountPercent: 20, paymentMethods: { cash: true, gcash: true, card: true } };
+type Settings = { storeName: string; address: string; contactNumber: string; receiptFooter: string; riderDiscountPercent: number; paymentMethods: { cash: boolean; gcash: boolean; card: boolean } };
+const defaults: Settings = { storeName: 'Car Wash POS', address: '', contactNumber: '', receiptFooter: 'Thank you for choosing us!', riderDiscountPercent: 20, paymentMethods: { cash: true, gcash: true, card: true } };
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>(defaults);
@@ -68,7 +68,7 @@ export default function SettingsPage() {
   return (
     <div className="h-full w-full p-6 space-y-6 overflow-y-auto bg-slate-50/60 font-sans text-slate-900">
       <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
-        <div><h1 className="text-lg font-black text-slate-950">System Configuration</h1><p className="mt-0.5 text-xs text-slate-600">Configure store identity, receipts, loyalty rules, payments, and data maintenance.</p></div>
+        <div><h1 className="text-lg font-black text-slate-950">System Configuration</h1><p className="mt-0.5 text-xs text-slate-600">Configure store identity, receipts, partner rules, payments, and data maintenance.</p></div>
         <button onClick={save} disabled={saving || loading} className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50"><Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save Settings'}</button>
       </div>
       {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700">{message}</div>}
@@ -85,20 +85,20 @@ export default function SettingsPage() {
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2"><ReceiptText className="h-4 w-4 text-blue-600" /><h2 className="text-xs font-extrabold uppercase tracking-wider">Receipt Settings</h2></div>
           <div><label className="mb-1 block text-[10px] font-extrabold uppercase text-slate-600">Receipt Footer</label><textarea value={settings.receiptFooter} onChange={(e) => update('receiptFooter', e.target.value)} maxLength={250} rows={4} className="w-full resize-none rounded-xl border border-slate-300 bg-slate-50 p-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-          <div className="rounded-xl bg-slate-50 p-3 text-[10px] font-bold text-slate-500">These store details are saved in MongoDB and are available to the POS for receipt configuration.</div>
+          <div className="rounded-xl bg-slate-50 p-3 text-[10px] font-bold text-slate-500">Store name, address, contact number, and footer are printed on newly generated POS receipts.</div>
         </div>
 
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-2"><Award className="h-4 w-4 text-purple-600" /><h2 className="text-xs font-extrabold uppercase tracking-wider">Loyalty & Partner Rules</h2></div>
-          <div><label className="mb-1 block text-[10px] font-extrabold uppercase text-slate-600">Stamps Required For Free Wash</label><input type="number" min={1} max={999} value={settings.stampsRequired} onChange={(e) => update('stampsRequired', Number(e.target.value))} className="w-full rounded-xl border border-slate-300 bg-slate-50 p-2.5 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          <div className="flex items-center gap-2"><Truck className="h-4 w-4 text-blue-600" /><h2 className="text-xs font-extrabold uppercase tracking-wider">Partner Rules</h2></div>
           <div><label className="mb-1 block text-[10px] font-extrabold uppercase text-slate-600">Rider Partner Discount (%)</label><input type="number" min={0} max={100} step="0.01" value={settings.riderDiscountPercent} onChange={(e) => update('riderDiscountPercent', Number(e.target.value))} className="w-full rounded-xl border border-slate-300 bg-slate-50 p-2.5 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          <p className="text-[10px] leading-4 text-slate-500">Used for partner/rider promotions. Physical loyalty cards are managed separately and are not tracked by the POS.</p>
         </div>
 
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-blue-600" /><h2 className="text-xs font-extrabold uppercase tracking-wider">Payment Methods</h2></div>
           <div className="space-y-2 text-xs">
             {([['cash', 'Cash'], ['gcash', 'GCash'], ['card', 'Card']] as const).map(([key, label]) => <label key={key} className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3"><span className="font-bold">{label}</span><input type="checkbox" checked={settings.paymentMethods[key]} onChange={(e) => update('paymentMethods', { ...settings.paymentMethods, [key]: e.target.checked })} className="h-4 w-4 accent-blue-600" /></label>)}
-            <p className="pt-1 text-[10px] text-slate-500">At least one payment method must stay enabled. These controls are persisted for future POS enforcement.</p>
+            <p className="pt-1 text-[10px] text-slate-500">At least one payment method must stay enabled. These controls are persisted for POS enforcement.</p>
           </div>
         </div>
       </div>
