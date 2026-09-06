@@ -116,6 +116,29 @@ main > .w-full.h-full.flex.gap-4.p-4.overflow-hidden > .flex-1.overflow-y-auto.s
   }
 }
 
+/* Tablet payment dialog: keep the focused amount field and action buttons above the on-screen keyboard. */
+@media (max-width: 900px) {
+  body:has(input[type="number"]:focus) .fixed.inset-0.z-50 {
+    align-items: flex-start;
+    overflow-y: auto;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  body:has(input[type="number"]:focus) .fixed.inset-0.z-50 > .w-full.max-w-md {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin: 0 auto;
+  }
+
+  body:has(input[type="number"]:focus) .fixed.inset-0.z-50 > .w-full.max-w-md input[type="number"] {
+    scroll-margin-bottom: 9rem;
+  }
+}
+
 /* Long management/report screens: keep the primary header visible while content scrolls. */
 main > div.h-full.overflow-y-auto > div[class*="mx-auto"] > :first-child,
 main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] > :first-child {
