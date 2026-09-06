@@ -58,3 +58,17 @@ main > .w-full.h-full.flex.gap-4.p-4.overflow-hidden > .flex-1.overflow-y-auto.s
   overflow-y: auto;
   padding-right: 0.25rem;
 }
+
+/* Long management/report screens: keep the main header visible while the page body scrolls. */
+main > div.h-full.overflow-y-auto > div[class*="mx-auto"] > :first-child,
+main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] > :first-child {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+main > div.h-full.overflow-y-auto > div[class*="mx-auto"] > header:first-child,
+main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] > header:first-child {
+  background: rgba(248, 250, 252, 0.96);
+  backdrop-filter: blur(8px);
+}
