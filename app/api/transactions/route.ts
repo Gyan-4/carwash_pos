@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import mongoose from 'mongoose';
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
@@ -46,6 +46,15 @@ function makeTransactionNo() {
   return `TX-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
 }
 
+function makeIdempotencyKey(userId: string, payload: { plate: string; vehicleType: string; vehicleSize?: string; serviceIds: string[]; total: number; paymentMethod: string; amountPaid: number }) {
+  const bucket = Math.floor(Date.now() / 30000);
+  return createHash('sha256').update(JSON.stringify({ userId, ...payload, bucket })).digest('hex');
+}
+
+function isDuplicateKeyError(error: unknown) {
+  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: number }).code === 11000);
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getAuthenticatedUser();
@@ -74,6 +83,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Invalid or duplicate services.' }, { status: 400 });
     }
 
+    await connectToDatabase();
+
     const catalogById = new Map(SERVICE_CATALOG.map((service) => [service.id, service]));
     const services: CatalogItem[] = [];
     for (const id of serviceIds) {
@@ -91,7 +102,6 @@ export async function POST(req: Request) {
     const pricedServices = services.map((service) => ({ id: service.id, name: service.name, category: service.category, price: getPrice(service, vehicleType, vehicleSize as VehicleSize) }));
     const subtotal = pricedServices.reduce((sum, service) => sum + service.price, 0);
 
-    await connectToDatabase();
     const shift = await Shift.findOne({ cashierId: user.id, status: 'open' }).sort({ openedAt: -1 });
     if (!shift && user.role !== 'manager') {
       return NextResponse.json({ success: false, error: 'No open cashier shift. Open a shift before processing a sale.' }, { status: 409 });
@@ -133,13 +143,28 @@ export async function POST(req: Request) {
     }
 
     const change = paymentMethod === 'cash' ? Math.max(0, amountPaid - total) : 0;
+    const idempotencyKey = makeIdempotencyKey(user.id, { plate, vehicleType, vehicleSize, serviceIds, total, paymentMethod, amountPaid });
+
+    const existingBeforeSave = await Transaction.findOne({ idempotencyKey }).lean();
+    if (existingBeforeSave) {
+      return NextResponse.json({ success: true, transaction: existingBeforeSave, duplicate: true, pricing: { subtotal: existingBeforeSave.subtotal, discount: existingBeforeSave.discount, total: existingBeforeSave.total, change: existingBeforeSave.change } }, { status: 200 });
+    }
+
     const transactionNo = makeTransactionNo();
     const now = new Date();
     const session = await mongoose.startSession();
 
     try {
       let transaction: any;
+      let duplicate = false;
       await session.withTransaction(async () => {
+        const existing = await Transaction.findOne({ idempotencyKey }).session(session).lean();
+        if (existing) {
+          transaction = existing;
+          duplicate = true;
+          return;
+        }
+
         const inventoryItems = await InventoryItem.find({ active: true, 'usage.serviceId': { $in: serviceIds } }).session(session).lean();
         const deductions = inventoryItems.map((item: any) => ({ item, quantity: item.usage.filter((usage: any) => serviceIds.includes(String(usage.serviceId))).reduce((sum: number, usage: any) => sum + Number(usage.quantity || 0), 0) })).filter((entry: any) => entry.quantity > 0);
 
@@ -149,6 +174,7 @@ export async function POST(req: Request) {
 
         const created = await Transaction.create([{
           transactionNo,
+          idempotencyKey,
           customerName: String(body.customerName || '').trim(),
           plate,
           vehicleType,
@@ -217,8 +243,14 @@ export async function POST(req: Request) {
           metadata: { total, discount, paymentMethod, plate, vehicleType, vehicleSize, serviceIds, promoName: promoName || undefined, shiftId: shift?._id },
         }], { session });
       });
-      return NextResponse.json({ success: true, transaction, pricing: { subtotal, discount, total, change } }, { status: 201 });
+      return NextResponse.json({ success: true, transaction, duplicate, pricing: { subtotal: transaction.subtotal, discount: transaction.discount, total: transaction.total, change: transaction.change } }, { status: duplicate ? 200 : 201 });
     } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        const existing = await Transaction.findOne({ idempotencyKey }).lean();
+        if (existing) {
+          return NextResponse.json({ success: true, transaction: existing, duplicate: true, pricing: { subtotal: existing.subtotal, discount: existing.discount, total: existing.total, change: existing.change } }, { status: 200 });
+        }
+      }
       const message = error instanceof Error ? error.message : '';
       if (message.startsWith('INSUFFICIENT_INVENTORY:')) { const [, name, available, required, unit] = message.split(':'); return NextResponse.json({ success: false, error: `Insufficient inventory: ${name}. Available ${available} ${unit}, required ${required} ${unit}.` }, { status: 409 }); }
       if (message.startsWith('INVENTORY_CHANGED:')) { const [, name] = message.split(':'); return NextResponse.json({ success: false, error: `Inventory changed while saving ${name}. Please review stock and try again.` }, { status: 409 }); }
@@ -226,6 +258,6 @@ export async function POST(req: Request) {
     } finally { await session.endSession(); }
   } catch (error) {
     console.error('POST /api/transactions failed:', error);
-    return NextResponse.json({ success: false, error: error instanceof Error && error.message.includes('No open cashier shift') ? error.message : 'Unable to save transaction.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Unable to save transaction.' }, { status: 500 });
   }
 }
