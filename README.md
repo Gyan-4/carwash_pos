@@ -92,6 +92,18 @@ The application can be deployed to Vercel with MongoDB Atlas.
 
 A healthy response reports `status: ok` and `database: connected`. A database failure returns HTTP 503 without exposing database credentials.
 
+### Verify the deployed application
+
+After Vercel deployment, run:
+
+```bash
+APP_URL=https://your-production-domain.example pnpm production:check
+```
+
+This verifies that the production application is reachable and that `/api/health` reports a working database connection. It does not expose secrets and does not replace a full POS acceptance test.
+
+For the complete release process, use `docs/GO_LIVE_CHECKLIST.md`.
+
 ## Client handover checklist
 
 Before handing the system to a client:
@@ -105,9 +117,26 @@ Before handing the system to a client:
 - Test transaction void/restore and audit logging with a manager account.
 - Configure MongoDB Atlas backups and confirm a recovery procedure.
 - Run the production environment preflight and fix any configuration errors before handover.
+- Run the deployed production health check.
+- Confirm GitHub Actions CI is green for the final commit.
 - Test the production deployment from the actual cashier device, receipt printer, and network.
 - Keep a copy of the final production configuration and deployment notes for support.
 
 ## Health check
 
 The endpoint `GET /api/health` checks application-to-database connectivity and is safe to use for uptime monitoring. It does not return the MongoDB connection string or other secrets.
+
+## Production verification
+
+The repository includes automated CI for linting and the production build on pushes and pull requests to `main`.
+
+Available checks:
+
+```bash
+pnpm lint
+pnpm build
+pnpm preflight
+APP_URL=https://your-production-domain.example pnpm production:check
+```
+
+A successful `pnpm build` verifies the application can be compiled for production. A successful `production:check` verifies the deployed application and database health endpoint. Both should pass before client handover.
