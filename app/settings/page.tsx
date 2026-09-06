@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Save, CreditCard, Trash2, ShieldAlert, Database, Store, ReceiptText, Truck } from 'lucide-react';
+import { Save, CreditCard, Trash2, ShieldAlert, Database, Store, ReceiptText, Truck, RotateCcw } from 'lucide-react';
 
 type Settings = { storeName: string; address: string; contactNumber: string; receiptFooter: string; riderDiscountPercent: number; paymentMethods: { cash: boolean; gcash: boolean; card: boolean } };
 const defaults: Settings = { storeName: 'Car Wash POS', address: '', contactNumber: '', receiptFooter: 'Thank you for choosing us!', riderDiscountPercent: 20, paymentMethods: { cash: true, gcash: true, card: true } };
@@ -63,6 +63,23 @@ export default function SettingsPage() {
     try { const response = await fetch('/api/admin/cleanup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'purge-all-transactions', confirmation, reason: reason.trim() }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Cleanup failed.'); setCleanupMessage(`${data.deletedCount} transaction record(s) permanently removed. Audit logs were preserved.`); } catch (e) { setCleanupMessage(e instanceof Error ? e.message : 'Cleanup failed.'); } finally { setCleaning(false); }
   }
 
+  async function resetTestDatabase() {
+    if (cleaning) return;
+    const confirmation = window.prompt('This resets the test database and permanently removes transactions, queue, customers, inventory, inventory history, shifts, promos, and audit logs. Users and system settings will be preserved. Type RESET TEST DATABASE to continue.');
+    if (confirmation !== 'RESET TEST DATABASE') return;
+    const reason = window.prompt('Enter a reason for this test database reset:');
+    if (!reason?.trim()) return;
+    setCleaning(true); setCleanupMessage(''); setError('');
+    try {
+      const response = await fetch('/api/admin/cleanup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset-test-database', confirmation, reason: reason.trim() }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Database reset failed.');
+      setCleanupMessage(data.message || 'Test database reset successfully. Users and system settings were preserved.');
+    } catch (e) {
+      setCleanupMessage(e instanceof Error ? e.message : 'Database reset failed.');
+    } finally { setCleaning(false); }
+  }
+
   if (!loading && !isManager) return <div className="p-8 text-sm font-bold text-slate-600">Manager access required.</div>;
 
   return (
@@ -85,7 +102,7 @@ export default function SettingsPage() {
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2"><ReceiptText className="h-4 w-4 text-blue-600" /><h2 className="text-xs font-extrabold uppercase tracking-wider">Receipt Settings</h2></div>
           <div><label className="mb-1 block text-[10px] font-extrabold uppercase text-slate-600">Receipt Footer</label><textarea value={settings.receiptFooter} onChange={(e) => update('receiptFooter', e.target.value)} maxLength={250} rows={4} className="w-full resize-none rounded-xl border border-slate-300 bg-slate-50 p-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-          <div className="rounded-xl bg-slate-50 p-3 text-[10px] font-bold text-slate-500">Store name, address, contact number, and footer are printed on newly generated POS receipts.</div>
+          <div className="rounded-xl bg-slate-50 p-3 text-[10px] font-bold text-slate-500">Store name, address, contact number, and footer are printed on newly generated POS receipts and transaction reprints.</div>
         </div>
 
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -104,8 +121,9 @@ export default function SettingsPage() {
       </div>
 
       <div className="rounded-2xl border border-red-200 bg-white p-5 shadow-sm">
-        <div className="flex items-start gap-3"><div className="rounded-xl bg-red-50 p-2"><Database className="h-5 w-5 text-red-600" /></div><div><h2 className="text-sm font-extrabold text-slate-950">Manager Data Management</h2><p className="mt-1 text-xs text-slate-600">Use this for test-data cleanup. Audit logs are never removed by these controls.</p></div></div>
+        <div className="flex items-start gap-3"><div className="rounded-xl bg-red-50 p-2"><Database className="h-5 w-5 text-red-600" /></div><div><h2 className="text-sm font-extrabold text-slate-950">Manager Data Management</h2><p className="mt-1 text-xs text-slate-600">Use these controls for database cleanup and testing. User accounts and system settings are protected from the test database reset.</p></div></div>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2"><button onClick={purgeDeleted} disabled={cleaning} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-left hover:bg-slate-50 disabled:opacity-50"><div className="flex items-center gap-2 text-xs font-extrabold"><Trash2 className="h-4 w-4 text-amber-600" /> Purge Deleted Transactions</div><p className="mt-1 text-[10px] text-slate-600">Permanently remove records already marked deleted.</p></button><button onClick={purgeAll} disabled={cleaning} className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-left hover:bg-red-100 disabled:opacity-50"><div className="flex items-center gap-2 text-xs font-extrabold text-red-800"><ShieldAlert className="h-4 w-4" /> Purge ALL Transactions</div><p className="mt-1 text-[10px] text-red-700">Dangerous: permanently removes every transaction record.</p></button></div>
+        <button onClick={resetTestDatabase} disabled={cleaning} className="mt-3 w-full rounded-xl border border-red-400 bg-red-600 px-4 py-4 text-left text-white shadow-sm hover:bg-red-700 disabled:opacity-50"><div className="flex items-center gap-2 text-xs font-extrabold"><RotateCcw className="h-4 w-4" /> Reset Test Database</div><p className="mt-1 text-[10px] text-red-50">Clear transactions, queue, customers, inventory, inventory history, shifts, promos, and audit logs. User accounts and system settings stay intact.</p></button>
         {cleanupMessage && <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">{cleanupMessage}</div>}
       </div>
     </div>
