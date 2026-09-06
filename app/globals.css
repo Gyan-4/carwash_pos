@@ -59,6 +59,18 @@ main > .w-full.h-full.flex.gap-4.p-4.overflow-hidden > .flex-1.overflow-y-auto.s
   padding-right: 0.25rem;
 }
 
+/* POS Terminal: keep the Services & Packages controls visible while service cards scroll. */
+main > .w-full.h-full.flex.gap-4.p-4.overflow-hidden > .flex-1.overflow-y-auto.space-y-4.pr-1 > :nth-child(2) > :first-child {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  margin-bottom: 0;
+  padding-top: 0.125rem;
+  padding-bottom: 0.75rem;
+  background: rgba(248, 250, 252, 0.98);
+  backdrop-filter: blur(8px);
+}
+
 /* Long management/report screens: keep the primary header visible while content scrolls. */
 main > div.h-full.overflow-y-auto > div[class*="mx-auto"] > :first-child,
 main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] > :first-child {
