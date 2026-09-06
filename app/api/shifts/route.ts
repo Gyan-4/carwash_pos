@@ -20,8 +20,28 @@ async function currentShift(userId: string) {
 }
 
 async function getSummary(shiftId: any) {
-  const totals = await Transaction.aggregate([{ $match: { shiftId, status: 'completed' } }, { $group: { _id: null, cashSales: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'cash'] }, '$total', 0] } }, gcashSales: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'gcash'] }, '$total', 0] } }, cardSales: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'card'] }, '$total', 0] } }, sales: { $sum: '$total' }, transactions: { $sum: 1 } } }]);
+  const totals = await Transaction.aggregate([
+    { $match: { shiftId, status: 'completed' } },
+    {
+      $group: {
+        _id: null,
+        cashSales: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'cash'] }, '$total', 0] } },
+        gcashSales: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'gcash'] }, '$total', 0] } },
+        cardSales: { $sum: { $cond: [{ $eq: ['$paymentMethod', 'card'] }, '$total', 0] } },
+        sales: { $sum: '$total' },
+        transactions: { $sum: 1 },
+      },
+    },
+  ]);
   return totals[0] || { cashSales: 0, gcashSales: 0, cardSales: 0, sales: 0, transactions: 0 };
+}
+
+async function decorateShift(shift: any) {
+  const summary = await getSummary(shift._id);
+  const expectedCash = money(
+    Number(shift.openingCash) + Number(shift.cashIn || 0) - Number(shift.cashOut || 0) + Number(summary.cashSales),
+  );
+  return { ...shift, expectedCash, summary };
 }
 
 export async function GET() {
@@ -29,15 +49,28 @@ export async function GET() {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
     await connectToDatabase();
+
     const filter = user.role === 'manager' ? {} : { cashierId: user.id };
     const shifts = await Shift.find(filter).sort({ openedAt: -1 }).limit(100).lean();
-    const active = shifts.find((shift: any) => shift.status === 'open') || null;
-    if (active) {
-      const summary = await getSummary(active._id);
-      const expectedCash = money(Number(active.openingCash) + Number(active.cashIn || 0) - Number(active.cashOut || 0) + Number(summary.cashSales));
-      return NextResponse.json({ success: true, active: { ...active, expectedCash, summary }, shifts });
+    const activeShifts = shifts.filter((shift: any) => shift.status === 'open');
+
+    if (user.role === 'manager') {
+      const decoratedActive = await Promise.all(activeShifts.map(decorateShift));
+      return NextResponse.json({
+        success: true,
+        active: decoratedActive[0] || null,
+        activeShifts: decoratedActive,
+        shifts,
+      });
     }
-    return NextResponse.json({ success: true, active: null, shifts });
+
+    const active = activeShifts[0] ? await decorateShift(activeShifts[0]) : null;
+    return NextResponse.json({
+      success: true,
+      active,
+      activeShifts: active ? [active] : [],
+      shifts,
+    });
   } catch (error) {
     console.error('GET /api/shifts failed:', error);
     return NextResponse.json({ success: false, error: 'Unable to load shifts.' }, { status: 500 });
@@ -53,33 +86,55 @@ export async function POST(req: Request) {
     const action = String(body.action || '');
 
     if (action === 'open') {
-      if (await currentShift(user.id)) return NextResponse.json({ success: false, error: 'You already have an open shift.' }, { status: 409 });
+      if (await currentShift(user.id)) {
+        return NextResponse.json({ success: false, error: 'You already have an open shift.' }, { status: 409 });
+      }
       const openingCash = money(body.openingCash);
-      if (!Number.isFinite(openingCash) || openingCash < 0) return NextResponse.json({ success: false, error: 'Opening cash must be zero or greater.' }, { status: 400 });
-      const shift = await Shift.create({ cashierId: user.id, cashierName: user.name, openingCash, openedAt: new Date(), status: 'open' });
+      if (!Number.isFinite(openingCash) || openingCash < 0) {
+        return NextResponse.json({ success: false, error: 'Opening cash must be zero or greater.' }, { status: 400 });
+      }
+      const shift = await Shift.create({
+        cashierId: user.id,
+        cashierName: user.name,
+        openingCash,
+        openedAt: new Date(),
+        status: 'open',
+      });
       await audit(user, 'SHIFT_OPENED', 'Cashier opened a shift', { shiftId: String(shift._id), openingCash });
       return NextResponse.json({ success: true, shift }, { status: 201 });
     }
 
     const shiftId = String(body.shiftId || '');
-    if (!mongoose.isValidObjectId(shiftId)) return NextResponse.json({ success: false, error: 'Invalid shift.' }, { status: 400 });
+    if (!mongoose.isValidObjectId(shiftId)) {
+      return NextResponse.json({ success: false, error: 'Invalid shift.' }, { status: 400 });
+    }
+
     const shift = await Shift.findById(shiftId);
     if (!shift) return NextResponse.json({ success: false, error: 'Shift not found.' }, { status: 404 });
-    if (user.role !== 'manager' && String(shift.cashierId) !== user.id) return NextResponse.json({ success: false, error: 'You can only manage your own shift.' }, { status: 403 });
+    if (user.role !== 'manager' && String(shift.cashierId) !== user.id) {
+      return NextResponse.json({ success: false, error: 'You can only manage your own shift.' }, { status: 403 });
+    }
 
     if (action === 'cash-in' || action === 'cash-out') {
       if (shift.status !== 'open') return NextResponse.json({ success: false, error: 'Shift is already closed.' }, { status: 409 });
       const amount = money(body.amount);
       const reason = String(body.reason || '').trim();
-      if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ success: false, error: 'Amount must be greater than zero.' }, { status: 400 });
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return NextResponse.json({ success: false, error: 'Amount must be greater than zero.' }, { status: 400 });
+      }
       if (!reason) return NextResponse.json({ success: false, error: 'A reason is required.' }, { status: 400 });
-      if (action === 'cash-in') shift.cashIn = Number(shift.cashIn || 0) + amount;
-      else {
+
+      if (action === 'cash-in') {
+        shift.cashIn = Number(shift.cashIn || 0) + amount;
+      } else {
         const summary = await getSummary(shift._id);
         const currentCash = Number(shift.openingCash) + Number(shift.cashIn || 0) - Number(shift.cashOut || 0) + Number(summary.cashSales);
-        if (amount > currentCash) return NextResponse.json({ success: false, error: `Cash-out exceeds the available cash of ₱${currentCash.toFixed(2)}.` }, { status: 409 });
+        if (amount > currentCash) {
+          return NextResponse.json({ success: false, error: `Cash-out exceeds the available cash of ₱${currentCash.toFixed(2)}.` }, { status: 409 });
+        }
         shift.cashOut = Number(shift.cashOut || 0) + amount;
       }
+
       await shift.save();
       await audit(user, action === 'cash-in' ? 'SHIFT_CASH_IN' : 'SHIFT_CASH_OUT', reason, { shiftId, amount });
       return NextResponse.json({ success: true, shift });
@@ -89,10 +144,16 @@ export async function POST(req: Request) {
       if (shift.status !== 'open') return NextResponse.json({ success: false, error: 'Shift is already closed.' }, { status: 409 });
       const actualCash = money(body.actualCash);
       const closingNote = String(body.closingNote || '').trim();
-      if (!Number.isFinite(actualCash) || actualCash < 0) return NextResponse.json({ success: false, error: 'Actual cash must be zero or greater.' }, { status: 400 });
+      if (!Number.isFinite(actualCash) || actualCash < 0) {
+        return NextResponse.json({ success: false, error: 'Actual cash must be zero or greater.' }, { status: 400 });
+      }
+
       const summary = await getSummary(shift._id);
-      const expectedCash = money(Number(shift.openingCash) + Number(shift.cashIn || 0) - Number(shift.cashOut || 0) + Number(summary.cashSales));
+      const expectedCash = money(
+        Number(shift.openingCash) + Number(shift.cashIn || 0) - Number(shift.cashOut || 0) + Number(summary.cashSales),
+      );
       const variance = money(actualCash - expectedCash);
+
       shift.actualCash = actualCash;
       shift.expectedCash = expectedCash;
       shift.variance = variance;
@@ -100,7 +161,16 @@ export async function POST(req: Request) {
       shift.closedAt = new Date();
       shift.status = 'closed';
       await shift.save();
-      await audit(user, 'SHIFT_CLOSED', closingNote || 'Cashier closed a shift', { shiftId, actualCash, expectedCash, variance });
+      await audit(user, 'SHIFT_CLOSED', closingNote || 'Cashier closed a shift', {
+        shiftId,
+        actualCash,
+        expectedCash,
+        variance,
+        cashierId: String(shift.cashierId),
+        cashierName: shift.cashierName,
+        closedBy: user.name,
+      });
+
       return NextResponse.json({ success: true, shift: { ...shift.toObject(), summary } });
     }
 
