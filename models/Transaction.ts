@@ -2,6 +2,7 @@ import mongoose, { Schema } from 'mongoose';
 
 const TransactionSchema = new Schema({
   transactionNo: { type: String, required: true, unique: true },
+  idempotencyKey: { type: String, unique: true, sparse: true, trim: true },
   customerName: { type: String, default: '' },
   plate: { type: String, required: true, trim: true },
   vehicleType: { type: String, enum: ['motorcycle', 'sedan', 'suv', 'truck'], required: true },
