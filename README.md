@@ -104,6 +104,18 @@ This verifies that the production application is reachable and that `/api/health
 
 For the complete release process, use `docs/GO_LIVE_CHECKLIST.md`.
 
+## Client handover documentation
+
+The repository includes production handover documentation:
+
+- `docs/CLIENT_SETUP.md` — configure the POS for a new client, including accounts, business settings, services, inventory, promos, and receipt hardware.
+- `docs/DEPLOYMENT.md` — deploy and verify Vercel + MongoDB Atlas production releases.
+- `docs/USER_GUIDE.md` — cashier and manager operating procedures.
+- `docs/GO_LIVE_CHECKLIST.md` — release, security, functional, hardware, and handover acceptance tests.
+- `docs/DATABASE_BACKUP.md` — MongoDB Atlas backup and recovery procedure.
+
+Use the go-live checklist as the final gate before real customer transactions.
+
 ## Client handover checklist
 
 Before handing the system to a client:
