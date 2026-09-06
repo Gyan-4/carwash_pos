@@ -23,6 +23,7 @@ export async function GET() {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
+    if (user.role !== 'manager') return NextResponse.json({ success: false, error: 'Manager access required.' }, { status: 403 });
     await connectToDatabase();
     const transactions = await Transaction.find({ status: { $ne: 'deleted' } }).sort({ createdAt: -1 }).limit(200).lean();
     return NextResponse.json({ success: true, transactions });
