@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Carwash POS
 
-## Getting Started
+A production-oriented carwash point-of-sale system built with Next.js, TypeScript, Tailwind CSS, MongoDB, and Mongoose.
 
-First, run the development server:
+## Core features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Cashier and manager authentication with server-side sessions
+- Cashier shift opening, cash-in/out, and shift closing
+- POS checkout with server-side price validation
+- Packages, individual services, promos, discounts, and payment validation
+- Customer and vehicle history
+- Inventory stock tracking and automatic usage deduction
+- Active wash queue
+- Transaction history, void/restore controls, and audit logs
+- Analytics and dashboard reporting
+- Configurable store details, receipt footer, payment methods, and promo settings
+
+## Requirements
+
+- Node.js 20+
+- MongoDB database (MongoDB Atlas is recommended for hosted deployments)
+- npm, pnpm, or another supported Node package manager
+
+## Environment variables
+
+Create `.env.local` for local development. Never commit real credentials.
+
+```env
+MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@CLUSTER/DATABASE?retryWrites=true&w=majority
+CASHIER_PIN=CHANGE_ME
+MANAGER_PIN=CHANGE_ME
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Use strong production PINs and rotate any database credential that has been exposed.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Install dependencies:
 
-## Learn More
+```bash
+pnpm install
+```
 
-To learn more about Next.js, take a look at the following resources:
+Start the development server:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Open `http://localhost:3000`.
 
-## Deploy on Vercel
+### Seed initial accounts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+With `.env.local` configured:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm seed:auth
+```
+
+The seed script creates or updates the initial cashier and manager accounts from the supplied PINs.
+
+## Production deployment
+
+The application can be deployed to Vercel with MongoDB Atlas.
+
+1. Import the repository into Vercel.
+2. Configure the production environment variable `MONGODB_URI`.
+3. Configure strong `CASHIER_PIN` and `MANAGER_PIN` values for initial account setup.
+4. Make sure the MongoDB Atlas network access rules allow the deployment environment to connect.
+5. Deploy and verify the application through the health endpoint:
+
+```text
+/api/health
+```
+
+A healthy response reports `status: ok` and `database: connected`. A database failure returns HTTP 503 without exposing database credentials.
+
+## Client handover checklist
+
+Before handing the system to a client:
+
+- Replace all default/demo account PINs with client-specific credentials.
+- Confirm store information, receipt footer, payment methods, service pricing, promos, and inventory rules.
+- Create the required cashier and manager accounts.
+- Test one complete sale for each enabled payment method.
+- Open and close a cashier shift and verify cash reconciliation.
+- Test queue status changes and inventory deduction.
+- Test transaction void/restore and audit logging with a manager account.
+- Configure MongoDB Atlas backups and confirm a recovery procedure.
+- Test the production deployment from the actual cashier device, receipt printer, and network.
+- Keep a copy of the final production configuration and deployment notes for support.
+
+## Health check
+
+The endpoint `GET /api/health` checks application-to-database connectivity and is safe to use for uptime monitoring. It does not return the MongoDB connection string or other secrets.
