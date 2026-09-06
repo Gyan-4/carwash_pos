@@ -116,9 +116,15 @@ main > .w-full.h-full.flex.gap-4.p-4.overflow-hidden > .flex-1.overflow-y-auto.s
   }
 }
 
-/* Tablet payment dialog: keep the focused amount field and action buttons above the on-screen keyboard. */
+/* Tablet payment dialog: size the backdrop from the dynamic viewport so it follows the keyboard. */
 @media (max-width: 900px) {
   body:has(input[type="number"]:focus) .fixed.inset-0.z-50 {
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    height: 100dvh;
+    max-height: 100dvh;
     align-items: flex-start;
     overflow-y: auto;
     padding-top: max(12px, env(safe-area-inset-top));
@@ -135,6 +141,7 @@ main > .w-full.h-full.flex.gap-4.p-4.overflow-hidden > .flex-1.overflow-y-auto.s
   }
 
   body:has(input[type="number"]:focus) .fixed.inset-0.z-50 > .w-full.max-w-md input[type="number"] {
+    scroll-margin-top: 1rem;
     scroll-margin-bottom: 9rem;
   }
 }
