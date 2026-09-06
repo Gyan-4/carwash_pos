@@ -7,6 +7,11 @@ const UserSchema = new Schema({
   active: { type: Boolean, default: true },
   failedPinAttempts: { type: Number, default: 0 },
   lockedUntil: { type: Date, default: null },
+  lockoutLevel: { type: Number, default: 0 },
+  lockoutAfterAttempts: { type: Number, default: 5, min: 1, max: 20 },
+  lockoutBaseMinutes: { type: Number, default: 1, min: 1, max: 1440 },
+  lockoutMultiplier: { type: Number, default: 3, min: 1, max: 10 },
+  lockoutMaxMinutes: { type: Number, default: 60, min: 1, max: 10080 },
 }, { timestamps: true });
 
 const SessionSchema = new Schema({
