@@ -59,16 +59,65 @@ main > .w-full.h-full.flex.gap-4.p-4.overflow-hidden > .flex-1.overflow-y-auto.s
   padding-right: 0.25rem;
 }
 
-/* Long management/report screens: keep the main header visible while the page body scrolls. */
+/* Long management/report screens: keep the primary header visible while content scrolls. */
 main > div.h-full.overflow-y-auto > div[class*="mx-auto"] > :first-child,
 main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] > :first-child {
   position: sticky;
   top: 0;
-  z-index: 30;
+  z-index: 40;
 }
 
 main > div.h-full.overflow-y-auto > div[class*="mx-auto"] > header:first-child,
 main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] > header:first-child {
-  background: rgba(248, 250, 252, 0.96);
+  background: rgba(248, 250, 252, 0.97);
   backdrop-filter: blur(8px);
+}
+
+/* Customers / History summary cards remain visible below the header. */
+main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] > div[class*="grid-cols-2"][class*="sm:grid-cols-4"] {
+  position: sticky;
+  top: 7rem;
+  z-index: 35;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  background: rgba(248, 250, 252, 0.97);
+  backdrop-filter: blur(8px);
+}
+
+/* Analytics summary row remains visible while the report panels scroll. */
+main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] > section[class*="xl:grid-cols-4"] {
+  position: sticky;
+  top: 5.5rem;
+  z-index: 35;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  background: rgba(248, 250, 252, 0.97);
+  backdrop-filter: blur(8px);
+}
+
+/* Customer cards get their own scroll region so the header and summary never disappear. */
+main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] > div[class*="md:grid-cols-2"][class*="xl:grid-cols-3"] {
+  max-height: calc(100vh - 15rem);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  scrollbar-gutter: stable;
+}
+
+/* Long transaction/audit/mix lists scroll inside their panel while the panel heading remains visible. */
+main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] section > div.divide-y {
+  max-height: 24rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* Analytics: Top Services & Packages, Payment Methods, and Vehicle Types use the same compact scroller. */
+main > div.h-full.w-full.overflow-y-auto > div[class*="mx-auto"] section > div.divide-y > div {
+  min-width: 0;
+}
+
+/* Keep horizontal overflow inside wide tables/cards instead of moving the whole page. */
+main > div.h-full.overflow-y-auto,
+main > div.h-full.w-full.overflow-y-auto {
+  scrollbar-gutter: stable;
 }
