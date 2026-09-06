@@ -5,11 +5,27 @@ import { getAuthenticatedUser, hashPin, User } from '@/lib/auth';
 import { AuditLog } from '@/models/AuditLog';
 import { Transaction } from '@/models/Transaction';
 
+const LOCKOUT_FIELDS = ['lockoutAfterAttempts', 'lockoutBaseMinutes', 'lockoutMultiplier', 'lockoutMaxMinutes'] as const;
+
 async function requireManager() {
   const user = await getAuthenticatedUser();
   if (!user) return { error: NextResponse.json({ error: 'Unauthorized.' }, { status: 401 }) };
   if (user.role !== 'manager') return { error: NextResponse.json({ error: 'Manager access required.' }, { status: 403 }) };
   return { user };
+}
+
+function parseLockoutSettings(body: any) {
+  const values = {
+    lockoutAfterAttempts: Number(body.lockoutAfterAttempts),
+    lockoutBaseMinutes: Number(body.lockoutBaseMinutes),
+    lockoutMultiplier: Number(body.lockoutMultiplier),
+    lockoutMaxMinutes: Number(body.lockoutMaxMinutes),
+  };
+  if (!Number.isInteger(values.lockoutAfterAttempts) || values.lockoutAfterAttempts < 1 || values.lockoutAfterAttempts > 20) throw new Error('Failed-attempt threshold must be between 1 and 20.');
+  if (!Number.isFinite(values.lockoutBaseMinutes) || values.lockoutBaseMinutes < 1 || values.lockoutBaseMinutes > 1440) throw new Error('Base lockout must be between 1 and 1440 minutes.');
+  if (!Number.isFinite(values.lockoutMultiplier) || values.lockoutMultiplier < 1 || values.lockoutMultiplier > 10) throw new Error('Lockout multiplier must be between 1 and 10.');
+  if (!Number.isFinite(values.lockoutMaxMinutes) || values.lockoutMaxMinutes < values.lockoutBaseMinutes || values.lockoutMaxMinutes > 10080) throw new Error('Maximum lockout must be at least the base lockout and no more than 10080 minutes.');
+  return values;
 }
 
 export async function GET() {
@@ -58,6 +74,16 @@ export async function PATCH(req: Request) {
     await connectToDatabase();
     const target = await User.findById(id);
     if (!target) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+
+    if (body.resetLockout === true) {
+      target.failedPinAttempts = 0;
+      target.lockedUntil = null;
+      target.lockoutLevel = 0;
+      await target.save();
+      await AuditLog.create({ userId: auth.user.id, userName: auth.user.name, role: auth.user.role, action: 'USER_LOCKOUT_RESET', reason: `Reset PIN lockout for ${target.name}`, metadata: { targetUserId: id, targetUserName: target.name } });
+      return NextResponse.json({ success: true, user: { id: String(target._id), name: target.name, role: target.role, active: target.active } });
+    }
+
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) {
       const name = String(body.name || '').trim();
@@ -74,16 +100,39 @@ export async function PATCH(req: Request) {
       const pin = String(body.pin || '');
       if (!/^\d{4}$/.test(pin)) return NextResponse.json({ error: 'PIN must be exactly 4 digits.' }, { status: 400 });
       updates.pinHash = hashPin(pin);
+      updates.failedPinAttempts = 0;
+      updates.lockedUntil = null;
+      updates.lockoutLevel = 0;
     }
     if (body.active !== undefined) {
       if (typeof body.active !== 'boolean') return NextResponse.json({ error: 'Invalid active status.' }, { status: 400 });
       if (String(target._id) === auth.user.id && body.active === false) return NextResponse.json({ error: 'You cannot deactivate your own account.' }, { status: 400 });
       updates.active = body.active;
     }
+
+    const hasAnyLockoutField = LOCKOUT_FIELDS.some((field) => body[field] !== undefined);
+    if (hasAnyLockoutField) {
+      if (target.role !== 'cashier' && body.role !== 'cashier') return NextResponse.json({ error: 'Gradual lockout settings can only be configured for cashier accounts.' }, { status: 400 });
+      try {
+        const lockoutSettings = parseLockoutSettings({
+          lockoutAfterAttempts: body.lockoutAfterAttempts ?? target.lockoutAfterAttempts,
+          lockoutBaseMinutes: body.lockoutBaseMinutes ?? target.lockoutBaseMinutes,
+          lockoutMultiplier: body.lockoutMultiplier ?? target.lockoutMultiplier,
+          lockoutMaxMinutes: body.lockoutMaxMinutes ?? target.lockoutMaxMinutes,
+        });
+        Object.assign(updates, lockoutSettings);
+        updates.failedPinAttempts = 0;
+        updates.lockedUntil = null;
+        updates.lockoutLevel = 0;
+      } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid lockout settings.' }, { status: 400 });
+      }
+    }
+
     Object.assign(target, updates);
     await target.save();
     const changedFields = Object.keys(updates).filter((field) => field !== 'pinHash');
-    const action = body.pin !== undefined && changedFields.length === 0 ? 'USER_PIN_CHANGED' : 'USER_UPDATED';
+    const action = body.pin !== undefined && changedFields.filter((field) => !['failedPinAttempts', 'lockedUntil', 'lockoutLevel'].includes(field)).length === 0 ? 'USER_PIN_CHANGED' : 'USER_UPDATED';
     await AuditLog.create({ userId: auth.user.id, userName: auth.user.name, role: auth.user.role, action, reason: action === 'USER_PIN_CHANGED' ? `Changed PIN for ${target.name}` : `Updated user ${target.name}`, metadata: { targetUserId: id, targetUserName: target.name, changedFields } });
     return NextResponse.json({ success: true, user: { id: String(target._id), name: target.name, role: target.role, active: target.active } });
   } catch (error) {
