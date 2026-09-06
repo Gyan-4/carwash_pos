@@ -44,47 +44,55 @@ The health endpoint is a connectivity check only; it does not prove backups or b
 - [ ] Manager can reset a cashier lockout.
 - [ ] Deactivated accounts cannot sign in.
 - [ ] Logout ends the active session.
+- [ ] Cashier is redirected to Shift when attempting protected cashier workflows without an open shift.
 
 ## 5. Cashier shift
 
 - [ ] Cashier with no open shift is directed to the shift screen.
 - [ ] Opening cash is recorded correctly.
 - [ ] Cash-in works and requires a reason.
-- [ ] Cash-out works and cannot exceed available cash.
+- [ ] Cash-out works, requires a reason, and cannot exceed available cash.
 - [ ] Cash sales increase expected drawer cash.
 - [ ] GCash/card sales do not increase physical drawer cash.
 - [ ] Closing a shift records actual cash and variance.
+- [ ] Shift history remains available for manager review.
 
 ## 6. POS sale
 
 - [ ] Plate is required.
 - [ ] Vehicle type and size behave correctly.
 - [ ] Changing vehicle type/size does not clear the current order.
-- [ ] Package selection matches only the services actually selected.
+- [ ] Package selection does not silently add unselected extra services.
 - [ ] Pricing matches the approved service catalog.
 - [ ] Promo eligibility is enforced server-side.
+- [ ] Required promo verification is enforced.
 - [ ] Disabled payment methods cannot be used.
 - [ ] Cash change is calculated correctly.
 - [ ] GCash/card require exact payment.
 - [ ] A repeated checkout request does not create a duplicate transaction.
 - [ ] Successful sale creates the queue entry.
+- [ ] Successful sale performs the expected inventory deduction.
+- [ ] Insufficient inventory blocks the sale with a usable error message.
+- [ ] Receipt output contains the approved business details and totals.
 
 ## 7. Inventory and queue
 
-- [ ] Required inventory is deducted after a completed sale.
-- [ ] Insufficient stock blocks the sale with a friendly message.
-- [ ] Inventory movement is recorded.
-- [ ] Queue entry appears as waiting.
-- [ ] Washer/manager can move a queue item through washing to completed.
+- [ ] Inventory restock works.
+- [ ] Inventory adjustment/history is recorded for manager review.
+- [ ] Low-stock indicators work.
+- [ ] Queue entry appears as waiting after a successful sale.
+- [ ] Queue status can move through washing to completed.
+- [ ] Completed queue items are removed from the active queue view.
 
 ## 8. Management and records
 
 - [ ] Customer/vehicle history is updated.
 - [ ] Transaction history loads real production data.
 - [ ] Void/restore requires manager access.
-- [ ] Audit logs record important administrative and transaction actions.
+- [ ] Important administrative and transaction actions are auditable.
 - [ ] Dashboard and analytics reflect completed transactions.
-- [ ] Store information and receipt settings are correct.
+- [ ] Store information, receipt footer, payment methods, and promo settings are correct.
+- [ ] User Management correctly creates, updates, deactivates, and resets cashier accounts.
 
 ## 9. Backup and recovery
 
@@ -96,18 +104,31 @@ The health endpoint is a connectivity check only; it does not prove backups or b
 
 See `docs/DATABASE_BACKUP.md` for the recovery procedure.
 
-## 10. Real hardware test
+## 10. Failure and safety tests
+
+- [ ] Invalid login is rejected without exposing system details.
+- [ ] Database/API failure shows a friendly error instead of a blank or broken page.
+- [ ] A duplicate checkout does not create duplicate records.
+- [ ] Missing shift blocks cashier checkout.
+- [ ] Insufficient cash prevents an invalid cash-out.
+- [ ] Invalid promo verification blocks the discount.
+- [ ] Invalid/unavailable service pricing prevents checkout.
+- [ ] Deactivated users lose access.
+
+## 11. Real hardware test
 
 On the actual client workstation/tablet:
 
 - [ ] Login works over the production network.
 - [ ] POS remains usable at the intended screen size.
 - [ ] Receipt printing works with the actual printer.
-- [ ] Cashier can complete a real end-to-end test transaction.
+- [ ] Receipt formatting and paper size are correct.
+- [ ] Cashier can complete an end-to-end test transaction.
 - [ ] Network interruption shows a friendly failure instead of a broken screen.
 - [ ] Reloading the app does not lose the authenticated session unexpectedly.
+- [ ] Keyboard/mouse/touch input works as intended.
 
-## 11. Handover
+## 12. Handover
 
 - [ ] Client manager PIN delivered securely.
 - [ ] Client cashier PIN(s) delivered securely.
@@ -115,9 +136,12 @@ On the actual client workstation/tablet:
 - [ ] MongoDB Atlas ownership/access is documented.
 - [ ] Backup/recovery responsibility is documented.
 - [ ] Final production URL is documented.
-- [ ] Final service prices/promos are confirmed with the client.
+- [ ] Final service prices and promos are confirmed with the client.
+- [ ] Client setup guide provided.
+- [ ] User guide provided.
+- [ ] Deployment/recovery documentation provided.
 - [ ] Support/contact procedure is documented.
 
 ## Final sign-off
 
-Do not hand over the system until the deployment health check, CI build, database backup verification, and real hardware transaction test all pass.
+Do not hand over the system until deployment health, CI/build, database backup verification, security checks, and the real hardware transaction test all pass.
